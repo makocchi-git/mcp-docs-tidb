@@ -16,9 +16,8 @@ from typing import Any
 
 from pydantic import BaseModel
 from pytidb import TiDBClient
-from pytidb.schema import Field, TableModel
-from sqlalchemy import Column
-from sqlalchemy.dialects.mysql import JSON
+from pytidb.orm.types import JSON, TEXT
+from pytidb.schema import Column, Field, TableModel
 
 from mcp_docs_tidb.embeddings.base import EmbeddingProvider
 from mcp_docs_tidb.settings import (
@@ -63,10 +62,10 @@ def _build_chunk_model(
     """
     Dynamically construct a ``TableModel`` subclass for ``table_name``.
 
-    Each collection has its own model class because SQLModel binds the
-    ``__tablename__`` (and the underlying SQLAlchemy table object) to the
-    class. The class is generated through ``TableModel.__class__`` so the
-    SQLModel metaclass runs and registers the table.
+    Each collection has its own model class because pytidb's ``TableModel``
+    binds ``__tablename__`` (and the underlying table object) to the class.
+    The class is generated through ``TableModel.__class__`` so the
+    metaclass runs and registers the table.
     """
     embedding_field = embedding_provider.VectorField(
         source_field=CONTENT_COLUMN,
@@ -86,7 +85,9 @@ def _build_chunk_model(
             max_length=36,
             default_factory=lambda: uuid.uuid4().hex,
         ),
-        CONTENT_COLUMN: Field(),
+        CONTENT_COLUMN: Field(
+            sa_column=Column(CONTENT_COLUMN, TEXT, nullable=False),
+        ),
         f"{METADATA_COLUMN}_": Field(
             default=None,
             sa_column=Column(METADATA_COLUMN, JSON, nullable=True),
@@ -132,6 +133,7 @@ class TiDBConnector:
                 username=self._settings.user,
                 password=self._settings.password,
                 database=self._settings.database,
+                ensure_db=True,
                 **kwargs,
             )
         return self._client
@@ -198,9 +200,9 @@ class TiDBConnector:
             search = search.filter(dict_filter)
         rows = search.limit(int(limit)).to_list()
 
-        # pytidb's row dicts use the SQLModel attribute name, which is
-        # `metadata_` here because plain `metadata` collides with the
-        # SQLAlchemy declarative base's reserved attribute.
+        # pytidb's row dicts use the attribute name, which is `metadata_`
+        # here because plain `metadata` collides with the declarative
+        # base's reserved attribute.
         entries: list[Entry] = []
         for row in rows:
             raw_meta = row.get(f"{METADATA_COLUMN}_")
