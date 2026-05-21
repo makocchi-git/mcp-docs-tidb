@@ -34,7 +34,11 @@ class ToolSettings(BaseSettings):
     Configuration for all the tools.
     """
 
-    model_config = SettingsConfigDict(populate_by_name=True)
+    model_config = SettingsConfigDict(
+        populate_by_name=True,
+        case_sensitive=True,
+        env_ignore_empty=True,
+    )
 
     tool_store_description: str = Field(
         default=DEFAULT_TOOL_STORE_DESCRIPTION,
@@ -55,7 +59,11 @@ class EmbeddingProviderSettings(BaseSettings):
     Configuration for the embedding provider.
     """
 
-    model_config = SettingsConfigDict(populate_by_name=True)
+    model_config = SettingsConfigDict(
+        populate_by_name=True,
+        case_sensitive=True,
+        env_ignore_empty=True,
+    )
 
     provider_type: EmbeddingProviderType = Field(
         default=EmbeddingProviderType.FASTEMBED,
@@ -104,9 +112,20 @@ class TiDBSettings(BaseSettings):
     TiDB is MySQL-protocol compatible, so connection parameters mirror MySQL's.
     The user is expected to point this at an already running TiDB instance
     (local tiup playground, self-hosted, or TiDB Serverless).
+
+    ``case_sensitive=True`` keeps field-name-based env lookups from picking
+    up unrelated OS variables such as ``USER`` or ``HOST`` (which would
+    otherwise leak into the ``user`` / ``host`` fields and silently
+    override the documented defaults). ``env_ignore_empty=True`` makes
+    empty values like ``TIDB_USER=`` behave the same as leaving the
+    variable unset, so the documented defaults still apply.
     """
 
-    model_config = SettingsConfigDict(populate_by_name=True)
+    model_config = SettingsConfigDict(
+        populate_by_name=True,
+        case_sensitive=True,
+        env_ignore_empty=True,
+    )
 
     host: str = Field(default="127.0.0.1", validation_alias="TIDB_HOST")
     port: int = Field(default=4000, validation_alias="TIDB_PORT")
