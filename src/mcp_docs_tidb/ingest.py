@@ -21,13 +21,15 @@ import time
 from pathlib import Path
 from typing import Iterable
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from mcp_docs_tidb.embeddings.base import EmbeddingProvider
 from mcp_docs_tidb.embeddings.factory import create_embedding_provider
 from mcp_docs_tidb.settings import (
     EmbeddingProviderSettings,
     TiDBSettings,
 )
-from mcp_docs_tidb.tidb import Entry, TiDBConnector
+from mcp_docs_tidb.tidb import Entry, TiDBConnector, format_db_error
 
 logger = logging.getLogger(__name__)
 
@@ -264,21 +266,31 @@ def _run_cli(args: argparse.Namespace) -> int:
     embedding_provider: EmbeddingProvider = create_embedding_provider(
         EmbeddingProviderSettings()
     )
+    tidb_settings = TiDBSettings()
     connector = TiDBConnector(
-        settings=TiDBSettings(),
+        settings=tidb_settings,
         embedding_provider=embedding_provider,
     )
     try:
-        count = ingest_paths(
-            files,
-            collection_name=args.collection,
-            connector=connector,
-            chunk_chars=args.chunk_chars,
-            overlap=args.overlap,
-            replace=args.replace,
-            only_modified=args.only_modified,
-            truncate_collection=args.truncate_collection,
-        )
+        try:
+            count = ingest_paths(
+                files,
+                collection_name=args.collection,
+                connector=connector,
+                chunk_chars=args.chunk_chars,
+                overlap=args.overlap,
+                replace=args.replace,
+                only_modified=args.only_modified,
+                truncate_collection=args.truncate_collection,
+            )
+        except (SQLAlchemyError, OSError) as exc:
+            print(format_db_error(exc, tidb_settings), file=sys.stderr)
+            if args.verbose:
+                # Re-raise so the user gets the full traceback when they
+                # asked for verbose output, but only after the friendly
+                # message has been printed.
+                raise
+            return 2
     finally:
         connector.close()
 
@@ -296,6 +308,11 @@ def main() -> None:
         level=logging.INFO if args.verbose else logging.WARNING,
         format="%(levelname) s %(message) s",
     )
+    if not args.verbose:
+        # pytidb logs a redundant ERROR line before re-raising connection
+        # failures; silence it so the only thing the user sees on a bad
+        # connection is our formatted message. `-v` restores the noise.
+        logging.getLogger("pytidb").setLevel(logging.CRITICAL)
     sys.exit(_run_cli(args))
 
 

@@ -5,6 +5,7 @@ from typing import Annotated, Any, Optional
 
 from fastmcp import Context, FastMCP
 from pydantic import Field
+from sqlalchemy.exc import SQLAlchemyError
 
 from pathlib import Path
 
@@ -19,7 +20,14 @@ from mcp_docs_tidb.settings import (
     TiDBSettings,
     ToolSettings,
 )
-from mcp_docs_tidb.tidb import ArbitraryFilter, Entry, Metadata, PyTiDBFilter, TiDBConnector
+from mcp_docs_tidb.tidb import (
+    ArbitraryFilter,
+    Entry,
+    Metadata,
+    PyTiDBFilter,
+    TiDBConnector,
+    format_db_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +119,11 @@ class TiDBMCPServer(FastMCP):
                 merged_metadata["mtime"] = mtime
             merged_metadata["ingested_at"] = time.time()
             entry = Entry(content=information, metadata=merged_metadata)
-            self.tidb_connector.store(entry, collection_name=collection_name)
+            try:
+                self.tidb_connector.store(entry, collection_name=collection_name)
+            except (SQLAlchemyError, OSError) as exc:
+                logger.exception("docs-tidb-store failed")
+                return format_db_error(exc, self.tidb_settings)
             return f"Remembered: {information} in collection {collection_name}"
 
         async def find(
@@ -132,12 +144,16 @@ class TiDBMCPServer(FastMCP):
             await ctx.debug(
                 f"Searching TiDB table {collection_name} with filter={dict_filter!r}"
             )
-            entries = self.tidb_connector.search(
-                query,
-                collection_name=collection_name,
-                limit=self.tidb_settings.search_limit,
-                dict_filter=dict_filter,
-            )
+            try:
+                entries = self.tidb_connector.search(
+                    query,
+                    collection_name=collection_name,
+                    limit=self.tidb_settings.search_limit,
+                    dict_filter=dict_filter,
+                )
+            except (SQLAlchemyError, OSError) as exc:
+                logger.exception("docs-tidb-find failed")
+                return [format_db_error(exc, self.tidb_settings)]
             if not entries:
                 return None
             content = [f"Results for the query '{query}'"]
@@ -224,16 +240,20 @@ class TiDBMCPServer(FastMCP):
             if not files:
                 return "No files matched."
 
-            written = ingest_paths(
-                files,
-                collection_name=collection_name,
-                connector=self.tidb_connector,
-                chunk_chars=chunk_chars,
-                overlap=overlap,
-                replace=replace,
-                only_modified=only_modified,
-                truncate_collection=truncate_collection,
-            )
+            try:
+                written = ingest_paths(
+                    files,
+                    collection_name=collection_name,
+                    connector=self.tidb_connector,
+                    chunk_chars=chunk_chars,
+                    overlap=overlap,
+                    replace=replace,
+                    only_modified=only_modified,
+                    truncate_collection=truncate_collection,
+                )
+            except (SQLAlchemyError, OSError) as exc:
+                logger.exception("docs-tidb-ingest failed")
+                return format_db_error(exc, self.tidb_settings)
             return (
                 f"Ingested {written} chunk(s) from {len(files)} file(s) "
                 f"into collection {collection_name}."

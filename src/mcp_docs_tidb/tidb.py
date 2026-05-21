@@ -54,6 +54,27 @@ def _validate_identifier(name: str) -> str:
     return name
 
 
+def format_db_error(exc: BaseException, settings: TiDBSettings) -> str:
+    """
+    Build a one-paragraph human-friendly error message for a TiDB-side
+    failure. Includes the connection target (host/port/user/database) so
+    the operator can immediately spot misconfiguration, plus the underlying
+    driver error string. Intended for CLI stderr and MCP tool replies —
+    use this instead of letting a raw SQLAlchemy / pymysql traceback leak
+    out.
+    """
+    # SQLAlchemy wraps the DBAPI error under `.orig`; surface that when
+    # available because it carries the actual MySQL/TiDB message.
+    underlying = getattr(exc, "orig", None) or exc
+    return (
+        f"Error: failed to access TiDB at {settings.host}:{settings.port} "
+        f"(user={settings.user!r}, database={settings.database!r}): "
+        f"{underlying}. "
+        "Hint: verify TIDB_HOST, TIDB_PORT, TIDB_USER, TIDB_PASSWORD, "
+        "TIDB_DATABASE and that the TiDB instance is reachable."
+    )
+
+
 def _build_chunk_model(
     table_name: str,
     embedding_provider: EmbeddingProvider,

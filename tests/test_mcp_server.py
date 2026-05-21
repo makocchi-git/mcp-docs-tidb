@@ -31,6 +31,21 @@ class _StubConnector:
         self.stored.append((entry, collection_name))
 
 
+class _ExplodingConnector:
+    """Connector stub whose store/search/* all raise SQLAlchemyError."""
+
+    def __init__(self) -> None:
+        from sqlalchemy.exc import SQLAlchemyError
+
+        self._exc_cls = SQLAlchemyError
+
+    def store(self, *_args: Any, **_kwargs: Any) -> None:
+        raise self._exc_cls("boom")
+
+    def search(self, *_args: Any, **_kwargs: Any) -> list[Entry]:
+        raise self._exc_cls("boom")
+
+
 async def _registered_tool_names(server: TiDBMCPServer) -> set[str]:
     tools = await server.get_tools()
     return set(tools.keys())
@@ -194,6 +209,51 @@ async def test_store_tool_records_mtime_and_ingested_at() -> None:
     assert entry.metadata["category"] == "fruit"
     assert entry.metadata["mtime"] == 1700000000.5
     assert isinstance(entry.metadata["ingested_at"], float)
+
+
+@pytest.mark.asyncio
+async def test_store_tool_returns_friendly_error_on_db_failure() -> None:
+    server = TiDBMCPServer(
+        tool_settings=ToolSettings(),
+        tidb_settings=TiDBSettings(),
+        embedding_provider=DeterministicEmbeddingProvider(dim=8),
+    )
+    server.tidb_connector = _ExplodingConnector()  # type: ignore[assignment]
+
+    tools = await server.get_tools()
+    store_fn = tools["docs-tidb-store"].fn
+
+    result = await store_fn(
+        ctx=_StubContext(),
+        information="hello",
+        collection_name="kb",
+    )
+
+    assert "Error: failed to access TiDB" in result
+    assert "Hint:" in result
+
+
+@pytest.mark.asyncio
+async def test_find_tool_returns_friendly_error_on_db_failure() -> None:
+    server = TiDBMCPServer(
+        tool_settings=ToolSettings(),
+        tidb_settings=TiDBSettings(),
+        embedding_provider=DeterministicEmbeddingProvider(dim=8),
+    )
+    server.tidb_connector = _ExplodingConnector()  # type: ignore[assignment]
+
+    tools = await server.get_tools()
+    find_fn = tools["docs-tidb-find"].fn
+
+    result = await find_fn(
+        ctx=_StubContext(),
+        query="anything",
+        collection_name="kb",
+    )
+
+    assert isinstance(result, list)
+    assert len(result) == 1
+    assert "Error: failed to access TiDB" in result[0]
 
 
 @pytest.mark.asyncio
