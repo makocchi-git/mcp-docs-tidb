@@ -546,9 +546,9 @@ Supported `op` values: `==`, `!=`, `>`, `>=`, `<`, `<=`, `in`, `not_in`.
 
 This mode does not require declaring fields up-front (and does not create indexes), so it is useful for ad-hoc exploration but slower on large tables.
 
-## Connecting to TiDB Serverless
+## Connecting to TiDB Cloud Starter
 
-TiDB Serverless requires TLS. Point `TIDB_SSL_CA` at your system CA bundle:
+TiDB Cloud Starter requires TLS. Point `TIDB_SSL_CA` at your system CA bundle:
 
 ```bash
 TIDB_HOST=gateway01.us-west-2.prod.aws.tidbcloud.com \

@@ -545,9 +545,9 @@ if __name__ == "__main__":
 
 このモードはフィールドを事前に宣言する必要がなく（インデックスも作成されないため）、アドホックな探索に便利ですが、大きなテーブルでは遅くなります。
 
-## TiDB Serverless への接続
+## TiDB Cloud Starter への接続
 
-TiDB Serverless は TLS を必要とします。`TIDB_SSL_CA` をシステムの CA バンドルに向けてください：
+TiDB Cloud Starter は TLS を必要とします。`TIDB_SSL_CA` をシステムの CA バンドルに向けてください：
 
 ```bash
 TIDB_HOST=gateway01.us-west-2.prod.aws.tidbcloud.com \
