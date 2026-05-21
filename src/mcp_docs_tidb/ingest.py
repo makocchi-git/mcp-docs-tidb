@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import json
 import logging
 import sys
 import time
@@ -187,14 +188,15 @@ def ingest_paths(
 
         chunks = chunk_text(text, max_chars=chunk_chars, overlap=overlap)
         for i, chunk in enumerate(chunks):
-            metadata: dict = {
-                "source": source,
-                "chunk": i,
-                "mtime": mtime,
-                "ingested_at": ingested_at,
-            }
-            if extra_metadata:
-                metadata.update(extra_metadata)
+            metadata: dict = dict(extra_metadata) if extra_metadata else {}
+            metadata.update(
+                {
+                    "source": source,
+                    "chunk": i,
+                    "mtime": mtime,
+                    "ingested_at": ingested_at,
+                }
+            )
             connector.store(
                 Entry(content=chunk, metadata=metadata),
                 collection_name=collection_name,
@@ -285,12 +287,48 @@ def _build_argparser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--extra-metadata",
+        dest="extra_metadata",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help=(
+            "Extra metadata key=value pair attached to every ingested chunk. "
+            "May be specified multiple times "
+            "(e.g. --extra-metadata category=docs --extra-metadata version=1.0). "
+            "Values that are valid JSON (numbers, booleans, arrays, objects) are "
+            "decoded automatically; others are stored as strings."
+        ),
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
         help="Enable INFO-level logging.",
     )
     return parser
+
+
+def _parse_extra_metadata_args(pairs: list[str]) -> dict:
+    """Convert a list of KEY=VALUE strings into a metadata dict.
+
+    Values are decoded as JSON when possible so that numbers and booleans
+    round-trip correctly; anything that is not valid JSON is kept as a string.
+
+    Raises ValueError if a pair does not contain '='.
+    """
+    result: dict = {}
+    for kv in pairs:
+        if "=" not in kv:
+            raise ValueError(
+                f"--extra-metadata must be KEY=VALUE, got: {kv!r}"
+            )
+        key, _, raw = kv.partition("=")
+        try:
+            result[key] = json.loads(raw)
+        except json.JSONDecodeError:
+            result[key] = raw
+    return result
 
 
 def _run_cli(args: argparse.Namespace) -> int:
@@ -302,6 +340,12 @@ def _run_cli(args: argparse.Namespace) -> int:
     )
     if not files:
         print("No files matched.", file=sys.stderr)
+        return 1
+
+    try:
+        extra_metadata = _parse_extra_metadata_args(args.extra_metadata) or None
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
         return 1
 
     embedding_provider: EmbeddingProvider = create_embedding_provider(
@@ -323,6 +367,7 @@ def _run_cli(args: argparse.Namespace) -> int:
                 replace=args.replace,
                 only_modified=args.only_modified,
                 truncate_collection=args.truncate_collection,
+                extra_metadata=extra_metadata,
             )
         except (SQLAlchemyError, OSError) as exc:
             print(format_db_error(exc, tidb_settings), file=sys.stderr)

@@ -11,7 +11,13 @@ from typing import Any, cast
 
 import pytest
 
-from mcp_docs_tidb.ingest import chunk_text, collect_paths, ingest_paths
+from mcp_docs_tidb.ingest import (
+    _build_argparser,
+    _parse_extra_metadata_args,
+    chunk_text,
+    collect_paths,
+    ingest_paths,
+)
 from mcp_docs_tidb.tidb import Entry, TiDBConnector
 
 from tests.conftest import requires_tidb
@@ -175,6 +181,88 @@ def test_collect_paths_exclude_empty_list_keeps_all(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# _parse_extra_metadata_args — unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_parse_extra_metadata_empty_list_returns_empty_dict() -> None:
+    assert _parse_extra_metadata_args([]) == {}
+
+
+def test_parse_extra_metadata_single_string_value() -> None:
+    result = _parse_extra_metadata_args(["category=docs"])
+    assert result == {"category": "docs"}
+
+
+def test_parse_extra_metadata_multiple_pairs() -> None:
+    result = _parse_extra_metadata_args(["category=docs", "version=1.0"])
+    assert result == {"category": "docs", "version": 1.0}
+
+
+def test_parse_extra_metadata_json_number_decoded() -> None:
+    result = _parse_extra_metadata_args(["priority=3"])
+    assert result == {"priority": 3}
+    assert isinstance(result["priority"], int)
+
+
+def test_parse_extra_metadata_json_float_decoded() -> None:
+    result = _parse_extra_metadata_args(["score=1.5"])
+    assert result == {"score": 1.5}
+
+
+def test_parse_extra_metadata_json_bool_decoded() -> None:
+    result = _parse_extra_metadata_args(["public=true", "draft=false"])
+    assert result == {"public": True, "draft": False}
+
+
+def test_parse_extra_metadata_json_null_decoded() -> None:
+    result = _parse_extra_metadata_args(["owner=null"])
+    assert result == {"owner": None}
+
+
+def test_parse_extra_metadata_value_with_equals_sign() -> None:
+    result = _parse_extra_metadata_args(["url=http://example.com?a=1"])
+    assert result == {"url": "http://example.com?a=1"}
+
+
+def test_parse_extra_metadata_invalid_format_raises() -> None:
+    with pytest.raises(ValueError, match="KEY=VALUE"):
+        _parse_extra_metadata_args(["nodequals"])
+
+
+# ---------------------------------------------------------------------------
+# _build_argparser — --extra-metadata argument
+# ---------------------------------------------------------------------------
+
+
+def test_argparser_extra_metadata_defaults_to_empty_list() -> None:
+    parser = _build_argparser()
+    args = parser.parse_args(["--collection", "kb", "file.md"])
+    assert args.extra_metadata == []
+
+
+def test_argparser_extra_metadata_single_value() -> None:
+    parser = _build_argparser()
+    args = parser.parse_args(
+        ["--collection", "kb", "--extra-metadata", "category=docs", "file.md"]
+    )
+    assert args.extra_metadata == ["category=docs"]
+
+
+def test_argparser_extra_metadata_multiple_values() -> None:
+    parser = _build_argparser()
+    args = parser.parse_args(
+        [
+            "--collection", "kb",
+            "--extra-metadata", "category=docs",
+            "--extra-metadata", "version=2",
+            "file.md",
+        ]
+    )
+    assert args.extra_metadata == ["category=docs", "version=2"]
+
+
+# ---------------------------------------------------------------------------
 # ingest_paths — metadata (unit tests with a stub connector)
 # ---------------------------------------------------------------------------
 
@@ -202,6 +290,48 @@ def test_ingest_paths_records_mtime_and_ingested_at(tmp_path: Path) -> None:
     assert entry.metadata["mtime"] == expected_mtime
     assert isinstance(entry.metadata["ingested_at"], float)
     assert entry.metadata["ingested_at"] >= expected_mtime
+
+
+def test_ingest_paths_extra_metadata_attached_to_chunks(tmp_path: Path) -> None:
+    f = tmp_path / "doc.md"
+    f.write_text("hello world")
+
+    stub = _RecordingConnector()
+    ingest_paths(
+        [f],
+        collection_name="any",
+        connector=cast(TiDBConnector, stub),
+        chunk_chars=64,
+        overlap=0,
+        extra_metadata={"category": "docs", "priority": 1},
+    )
+
+    assert len(stub.stored) == 1
+    entry, _ = stub.stored[0]
+    assert entry.metadata is not None
+    assert entry.metadata["category"] == "docs"
+    assert entry.metadata["priority"] == 1
+    assert "source" in entry.metadata
+
+
+def test_ingest_paths_extra_metadata_does_not_override_source(tmp_path: Path) -> None:
+    f = tmp_path / "doc.md"
+    f.write_text("content")
+    source = str(f.resolve())
+
+    stub = _RecordingConnector()
+    ingest_paths(
+        [f],
+        collection_name="any",
+        connector=cast(TiDBConnector, stub),
+        chunk_chars=64,
+        overlap=0,
+        extra_metadata={"source": "should-be-overridden"},
+    )
+
+    entry, _ = stub.stored[0]
+    assert entry.metadata is not None
+    assert entry.metadata["source"] == source
 
 
 def test_only_modified_skips_file_when_mtime_not_newer(tmp_path: Path) -> None:

@@ -370,6 +370,21 @@ uvx --from git+https://github.com/makocchi-git/mcp-docs-tidb mcp-docs-tidb-inges
 # Useful after large-scale edits or to recover from inconsistent state.
 uvx --from git+https://github.com/makocchi-git/mcp-docs-tidb mcp-docs-tidb-ingest \
   --collection kb --recursive --glob '*.md' --truncate ./docs
+
+# Tag every chunk with extra metadata (useful with filterable fields).
+# Values that parse as valid JSON (numbers, booleans) are decoded automatically.
+uvx --from git+https://github.com/makocchi-git/mcp-docs-tidb mcp-docs-tidb-ingest \
+  --collection kb --recursive --glob '*.md' \
+  --extra-metadata category=docs \
+  --extra-metadata public=true \
+  ./docs
+
+# Exclude files matching a glob pattern (filename or full path).
+uvx --from git+https://github.com/makocchi-git/mcp-docs-tidb mcp-docs-tidb-ingest \
+  --collection kb --recursive --glob '*.md' \
+  --exclude-glob 'CHANGELOG.md' \
+  --exclude-glob '*/drafts/*' \
+  ./docs
 ```
 
 Flags:
@@ -384,6 +399,8 @@ Flags:
 | `--no-replace` | off | Append instead of replacing previously-ingested chunks for the same source file. |
 | `--only-modified` | off | Skip files whose on-disk mtime is not newer than the `metadata.mtime` recorded for the same source. Files with no prior record are still processed. |
 | `--truncate` | off | `TRUNCATE TABLE` the collection before ingesting. Schema is kept; every row is wiped, then the inputs are re-chunked and re-embedded. Use to rebuild from scratch. |
+| `--extra-metadata` | _(unset)_ | Extra `KEY=VALUE` metadata pair attached to every ingested chunk. May be repeated. Values that are valid JSON (numbers, booleans, arrays, objects) are decoded automatically; anything else is stored as a string. Standard fields (`source`, `chunk`, `mtime`, `ingested_at`) always take precedence over conflicting keys. |
+| `--exclude-glob` | _(unset)_ | Glob pattern for files to skip. May be repeated. Matched against both the filename and the full path (e.g. `--exclude-glob 'CHANGELOG.md'` or `--exclude-glob '*/drafts/*'`). |
 | `-v`, `--verbose` | off | Log per-file progress (incl. which files were skipped by `--only-modified`). |
 
 ### What gets written
@@ -393,7 +410,7 @@ For each input file, the CLI:
 1. Reads the file as UTF-8.
 2. Splits it into character-based chunks of `--chunk-chars` with `--overlap` overlap.
 3. (By default) deletes existing rows whose `metadata.source` equals the absolute path of this file.
-4. Inserts one row per chunk with `metadata = {"source": "<abs path>", "chunk": <0-based index>, "mtime": <file mtime, epoch s>, "ingested_at": <now, epoch s>}`.
+4. Inserts one row per chunk with `metadata = {"source": "<abs path>", "chunk": <0-based index>, "mtime": <file mtime, epoch s>, "ingested_at": <now, epoch s>, ...}`. Any `--extra-metadata` pairs are merged in first; the four standard fields always win if there is a key conflict.
 
 So a re-ingest of the same file produces the same row count regardless of how many times you've run it — useful for cron-driven refreshes. All chunks of a single ingest share the same `ingested_at`; `mtime` is the file's on-disk modification time at ingest time.
 
@@ -410,35 +427,31 @@ So a re-ingest of the same file produces the same row count regardless of how ma
 `mcp-docs-tidb-ingest` is a thin wrapper around `mcp_docs_tidb.ingest.ingest_paths`, which you can call directly if you need to embed ingestion into your own pipeline:
 
 ```python
-import asyncio
 from pathlib import Path
 
 from mcp_docs_tidb.embeddings.factory import create_embedding_provider
-from mcp_docs_tidb.ingest import ingest_paths, collect_paths
+from mcp_docs_tidb.ingest import collect_paths, ingest_paths
 from mcp_docs_tidb.settings import EmbeddingProviderSettings, TiDBSettings
 from mcp_docs_tidb.tidb import TiDBConnector
 
-async def main():
-    connector = TiDBConnector(
-        settings=TiDBSettings(),
-        embedding_provider=create_embedding_provider(EmbeddingProviderSettings()),
+connector = TiDBConnector(
+    settings=TiDBSettings(),
+    embedding_provider=create_embedding_provider(EmbeddingProviderSettings()),
+)
+try:
+    files = collect_paths([Path("docs")], recursive=True, glob="*.md")
+    n = ingest_paths(
+        files,
+        collection_name="kb",
+        connector=connector,
+        chunk_chars=1500,
+        overlap=150,
+        only_modified=True,  # skip files whose mtime hasn't advanced
+        extra_metadata={"team": "platform"},
     )
-    try:
-        files = collect_paths([Path("docs")], recursive=True, glob="*.md")
-        n = await ingest_paths(
-            files,
-            collection_name="kb",
-            connector=connector,
-            chunk_chars=1500,
-            overlap=150,
-            only_modified=True,  # skip files whose mtime hasn't advanced
-            extra_metadata={"team": "platform"},
-        )
-        print(f"wrote {n} chunks")
-    finally:
-        await connector.close()
-
-asyncio.run(main())
+    print(f"wrote {n} chunks")
+finally:
+    connector.close()
 ```
 
 `extra_metadata` is merged into every chunk's metadata, alongside the standard `source` / `chunk` / `mtime` / `ingested_at` keys. Combined with [filterable fields](#filtering-search-results) you can then filter `docs-tidb-find` by, e.g., `team`.

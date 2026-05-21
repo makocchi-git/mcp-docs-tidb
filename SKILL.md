@@ -43,6 +43,8 @@ Never use `docs-tidb-store` in a loop to populate a corpus — it is for single 
        --collection <name> --recursive --glob '*.md' <paths...>
    ```
    Re-running the same command is safe — chunks are replaced per source file by default. Pass `--no-replace` only if the user explicitly wants append-only history. For periodic refreshes of a large corpus where only a few files change, add `--only-modified` (or the `only_modified=True` argument on the MCP tool) so unchanged files are skipped based on their on-disk mtime vs. the `metadata.mtime` already in TiDB.
+
+   Use `--extra-metadata KEY=VALUE` (repeatable) to tag every ingested chunk with additional metadata fields — for example `--extra-metadata category=ops`. Values that are valid JSON (numbers, booleans) are decoded automatically. These fields are searchable via filterable fields or the arbitrary-filter mechanism. The four standard fields (`source`, `chunk`, `mtime`, `ingested_at`) always take precedence if there is a key conflict. Use `--exclude-glob PATTERN` (repeatable) to skip files matching a glob pattern against the filename or full path.
 4. **Report counts.** The tool/CLI returns "Ingested N chunk(s) from M file(s)". Surface that to the user verbatim — it's the only direct signal that re-ingest actually replaced rows.
 5. **Vector index decision.** Two paths, requires TiFlash in either case:
    - Set `TIDB_USE_VECTOR_INDEX=1` *before* the first ingest so the auto-created table includes `VECTOR INDEX ... USING HNSW` inline. Cleanest, but no-op against existing tables.
