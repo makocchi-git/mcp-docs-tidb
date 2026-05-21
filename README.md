@@ -573,4 +573,4 @@ uv run mypy src
 
 ## License
 
-Apache License 2.0.
+MIT License.
