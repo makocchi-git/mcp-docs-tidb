@@ -45,6 +45,23 @@ class _ExplodingConnector:
     def search(self, *_args: Any, **_kwargs: Any) -> list[Entry]:
         raise self._exc_cls("boom")
 
+    def list_sources(self, *_args: Any, **_kwargs: Any) -> list[dict[str, Any]]:
+        raise self._exc_cls("boom")
+
+
+class _ListStubConnector:
+    """Connector stub that returns canned list_sources output."""
+
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        self._rows = rows
+        self.calls: list[str | None] = []
+
+    def list_sources(
+        self, *, collection_name: str | None = None, limit: int = 1000
+    ) -> list[dict[str, Any]]:
+        self.calls.append(collection_name)
+        return list(self._rows)
+
 
 async def _registered_tool_names(server: TiDBMCPServer) -> set[str]:
     tools = await server.get_tools()
@@ -58,7 +75,7 @@ async def _tool_param_names(server: TiDBMCPServer, name: str) -> set[str]:
 
 
 @pytest.mark.asyncio
-async def test_default_registers_all_three_tools() -> None:
+async def test_default_registers_all_four_tools() -> None:
     server = TiDBMCPServer(
         tool_settings=ToolSettings(),
         tidb_settings=TiDBSettings(),
@@ -68,6 +85,7 @@ async def test_default_registers_all_three_tools() -> None:
         "docs-tidb-find",
         "docs-tidb-store",
         "docs-tidb-ingest",
+        "docs-tidb-list",
     }
 
 
@@ -78,7 +96,10 @@ async def test_read_only_hides_store_and_ingest_tools() -> None:
         tidb_settings=TiDBSettings(read_only=True),
         embedding_provider=DeterministicEmbeddingProvider(dim=8),
     )
-    assert await _registered_tool_names(server) == {"docs-tidb-find"}
+    assert await _registered_tool_names(server) == {
+        "docs-tidb-find",
+        "docs-tidb-list",
+    }
 
 
 @pytest.mark.asyncio
@@ -91,9 +112,11 @@ async def test_default_collection_hides_collection_argument() -> None:
     find_params = await _tool_param_names(server, "docs-tidb-find")
     store_params = await _tool_param_names(server, "docs-tidb-store")
     ingest_params = await _tool_param_names(server, "docs-tidb-ingest")
+    list_params = await _tool_param_names(server, "docs-tidb-list")
     assert "collection_name" not in find_params
     assert "collection_name" not in store_params
     assert "collection_name" not in ingest_params
+    assert "collection_name" not in list_params
 
 
 @pytest.mark.asyncio
@@ -254,6 +277,57 @@ async def test_find_tool_returns_friendly_error_on_db_failure() -> None:
     assert isinstance(result, list)
     assert len(result) == 1
     assert "Error: failed to access TiDB" in result[0]
+
+
+@pytest.mark.asyncio
+async def test_list_tool_returns_connector_rows() -> None:
+    server = TiDBMCPServer(
+        tool_settings=ToolSettings(),
+        tidb_settings=TiDBSettings(),
+        embedding_provider=DeterministicEmbeddingProvider(dim=8),
+    )
+    rows = [
+        {
+            "source": "/abs/a.md",
+            "chunks": 3,
+            "mtime": 1700000000.0,
+            "ingested_at": 1700000100.0,
+        },
+        {
+            "source": "/abs/b.md",
+            "chunks": 1,
+            "mtime": None,
+            "ingested_at": 1700000200.0,
+        },
+    ]
+    stub = _ListStubConnector(rows)
+    server.tidb_connector = stub  # type: ignore[assignment]
+
+    tools = await server.get_tools()
+    list_fn = tools["docs-tidb-list"].fn
+
+    result = await list_fn(ctx=_StubContext(), collection_name="kb")
+
+    assert result == rows
+    assert stub.calls == ["kb"]
+
+
+@pytest.mark.asyncio
+async def test_list_tool_returns_friendly_error_on_db_failure() -> None:
+    server = TiDBMCPServer(
+        tool_settings=ToolSettings(),
+        tidb_settings=TiDBSettings(),
+        embedding_provider=DeterministicEmbeddingProvider(dim=8),
+    )
+    server.tidb_connector = _ExplodingConnector()  # type: ignore[assignment]
+
+    tools = await server.get_tools()
+    list_fn = tools["docs-tidb-list"].fn
+
+    result = await list_fn(ctx=_StubContext(), collection_name="kb")
+
+    assert isinstance(result, str)
+    assert "Error: failed to access TiDB" in result
 
 
 @pytest.mark.asyncio

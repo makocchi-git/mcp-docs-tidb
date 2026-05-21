@@ -1,11 +1,11 @@
 ---
 name: tidb-docs
-description: Use this skill when the user wants to index, search, or maintain a corpus of local documents in a TiDB vector store via the mcp-docs-tidb project. Triggers include "ingest these docs into TiDB", "find X in the TiDB knowledge base", "refresh the kb collection", "set up TiDB document search", or any task that involves the `docs-tidb-ingest`, `docs-tidb-find`, or `docs-tidb-store` MCP tools, or the `mcp-docs-tidb-ingest` CLI.
+description: Use this skill when the user wants to index, search, or maintain a corpus of local documents in a TiDB vector store via the mcp-docs-tidb project. Triggers include "ingest these docs into TiDB", "find X in the TiDB knowledge base", "list documents registered in TiDB", "refresh the kb collection", "set up TiDB document search", or any task that involves the `docs-tidb-ingest`, `docs-tidb-find`, `docs-tidb-list`, or `docs-tidb-store` MCP tools, or the `mcp-docs-tidb-ingest` CLI.
 ---
 
 # TiDB document store skill
 
-This skill drives the `mcp-docs-tidb` project: a vector-search backend that stores chunked documents in TiDB and exposes them to the LLM through MCP tools (`docs-tidb-ingest`, `docs-tidb-find`, `docs-tidb-store`) and an equivalent CLI (`mcp-docs-tidb-ingest`).
+This skill drives the `mcp-docs-tidb` project: a vector-search backend that stores chunked documents in TiDB and exposes them to the LLM through MCP tools (`docs-tidb-ingest`, `docs-tidb-find`, `docs-tidb-list`, `docs-tidb-store`) and an equivalent CLI (`mcp-docs-tidb-ingest`).
 
 Use it when the user asks to load documents into TiDB, search them, or maintain a knowledge base — *not* for ad-hoc memories during a conversation (those go through `docs-tidb-store` directly with no skill involvement).
 
@@ -25,6 +25,7 @@ If TiDB is unreachable, stop and ask the user to start it (`tiup playground v8.4
 | --- | --- |
 | "Index/load/refresh these files into TiDB" | `docs-tidb-ingest` MCP tool (if available in this session) or `mcp-docs-tidb-ingest` CLI |
 | "Find / search / what does X say about Y" | `docs-tidb-find` MCP tool |
+| "What's already registered / list documents / show sources / when was X last ingested" | `docs-tidb-list` MCP tool |
 | "Remember this single fact / note" | `docs-tidb-store` MCP tool (not bulk) |
 | Automated/cron refresh outside a conversation | `mcp-docs-tidb-ingest` CLI |
 | Remote / Dockerised MCP server, filesystem not shared with the LLM client | CLI on the *server* host (the MCP tool would not see the client's files) |
@@ -47,6 +48,13 @@ Never use `docs-tidb-store` in a loop to populate a corpus — it is for single 
    - Set `TIDB_USE_VECTOR_INDEX=1` *before* the first ingest so the auto-created table includes `VECTOR INDEX ... USING HNSW` inline. Cleanest, but no-op against existing tables.
    - Run `ALTER TABLE <collection> ADD VECTOR INDEX idx_embedding ((VEC_COSINE_DISTANCE(embedding))) USING HNSW` after the first sizeable load. Use this when the table already exists.
    Without an index, searches are sequential scans — fine up to ~10⁴ rows, painful beyond. If the cluster has no TiFlash node, skip this step; index creation will fail.
+
+## Workflow: inspecting registered documents
+
+- Call `docs-tidb-list` to enumerate what is already in a collection. Each row is `{source, chunks, mtime, ingested_at}` (Unix epoch seconds, or `null` when the metadata key is missing).
+- Use it before re-ingesting to confirm the collection name is correct and to spot stale or missing sources.
+- The tool is read-only and stays available even when `TIDB_READ_ONLY=1`.
+- An empty list either means the collection has not been created yet, or every row lacks a `metadata.source` (e.g. populated only via `docs-tidb-store` with no source). Confirm with `SELECT COUNT(*) FROM <collection>` if uncertain.
 
 ## Workflow: searching
 

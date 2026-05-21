@@ -278,6 +278,61 @@ class TiDBConnector:
         client.execute(f"TRUNCATE TABLE `{name}`")
         return True
 
+    def list_sources(
+        self,
+        *,
+        collection_name: str | None = None,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        """
+        Return a per-source summary of the rows stored in ``collection_name``:
+        for each distinct ``metadata.source`` value, the number of chunks and
+        the latest ``metadata.mtime`` and ``metadata.ingested_at`` timestamps.
+
+        Rows whose metadata has no ``source`` key are skipped. Returns an
+        empty list when the table does not exist yet.
+        """
+        name = self._resolve_collection(collection_name)
+        if not self._collection_exists(name):
+            return []
+
+        client = self._get_client()
+        rows = client.query(
+            f"SELECT "
+            f"JSON_UNQUOTE(JSON_EXTRACT(`{METADATA_COLUMN}`, '$.source')) "
+            f"AS source, "
+            f"COUNT(*) AS chunks, "
+            f"MAX(CAST(JSON_EXTRACT(`{METADATA_COLUMN}`, '$.mtime') "
+            f"AS DOUBLE)) AS mtime, "
+            f"MAX(CAST(JSON_EXTRACT(`{METADATA_COLUMN}`, '$.ingested_at') "
+            f"AS DOUBLE)) AS ingested_at "
+            f"FROM `{name}` "
+            f"WHERE JSON_EXTRACT(`{METADATA_COLUMN}`, '$.source') IS NOT NULL "
+            f"GROUP BY source "
+            f"ORDER BY source "
+            f"LIMIT :limit",
+            {"limit": int(limit)},
+        ).to_list()
+
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            source = row.get("source")
+            if source is None:
+                continue
+            mtime = row.get("mtime")
+            ingested_at = row.get("ingested_at")
+            out.append(
+                {
+                    "source": source,
+                    "chunks": int(row.get("chunks") or 0),
+                    "mtime": float(mtime) if mtime is not None else None,
+                    "ingested_at": (
+                        float(ingested_at) if ingested_at is not None else None
+                    ),
+                }
+            )
+        return out
+
     def get_max_numeric_metadata_value(
         self,
         *,

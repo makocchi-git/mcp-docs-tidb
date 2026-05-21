@@ -259,9 +259,26 @@ class TiDBMCPServer(FastMCP):
                 f"into collection {collection_name}."
             )
 
+        async def list_sources(
+            ctx: Context,
+            collection_name: Annotated[
+                str,
+                Field(description="The collection (TiDB table) to inspect"),
+            ],
+        ) -> list[dict[str, Any]] | str:
+            await ctx.debug(f"Listing sources in TiDB table {collection_name}")
+            try:
+                return self.tidb_connector.list_sources(
+                    collection_name=collection_name
+                )
+            except (SQLAlchemyError, OSError) as exc:
+                logger.exception("docs-tidb-list failed")
+                return format_db_error(exc, self.tidb_settings)
+
         find_foo = find
         store_foo = store
         ingest_foo = ingest
+        list_foo = list_sources
 
         filterable_conditions = (
             self.tidb_settings.filterable_fields_dict_with_conditions()
@@ -289,11 +306,19 @@ class TiDBMCPServer(FastMCP):
             ingest_foo = make_partial_function(
                 ingest_foo, {"collection_name": self.tidb_settings.collection_name}
             )
+            list_foo = make_partial_function(
+                list_foo, {"collection_name": self.tidb_settings.collection_name}
+            )
 
         self.tool(
             find_foo,
             name="docs-tidb-find",
             description=self.tool_settings.tool_find_description,
+        )
+        self.tool(
+            list_foo,
+            name="docs-tidb-list",
+            description=self.tool_settings.tool_list_description,
         )
 
         if not self.tidb_settings.read_only:

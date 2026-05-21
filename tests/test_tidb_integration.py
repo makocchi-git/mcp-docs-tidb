@@ -203,6 +203,58 @@ def test_default_collection_used_when_argument_omitted(
         connector.close()
 
 
+def test_list_sources_returns_empty_for_missing_collection(
+    connector: TiDBConnector,
+) -> None:
+    assert (
+        connector.list_sources(collection_name="mcp_test_does_not_exist") == []
+    )
+
+
+def test_list_sources_groups_by_source(
+    connector: TiDBConnector, collection_name: str, cleanup_table: list[str]
+) -> None:
+    cleanup_table.append(collection_name)
+
+    connector.store(
+        Entry(
+            content="a-1",
+            metadata={"source": "/abs/a.md", "mtime": 100.0, "ingested_at": 1.0},
+        ),
+        collection_name=collection_name,
+    )
+    connector.store(
+        Entry(
+            content="a-2",
+            metadata={"source": "/abs/a.md", "mtime": 200.0, "ingested_at": 2.0},
+        ),
+        collection_name=collection_name,
+    )
+    connector.store(
+        Entry(
+            content="b-1",
+            metadata={"source": "/abs/b.md", "mtime": 50.0, "ingested_at": 3.0},
+        ),
+        collection_name=collection_name,
+    )
+    # Row without a `source` key must be ignored.
+    connector.store(
+        Entry(content="orphan", metadata={"note": "no source"}),
+        collection_name=collection_name,
+    )
+
+    rows = connector.list_sources(collection_name=collection_name)
+    by_source = {r["source"]: r for r in rows}
+
+    assert set(by_source) == {"/abs/a.md", "/abs/b.md"}
+    assert by_source["/abs/a.md"]["chunks"] == 2
+    assert by_source["/abs/a.md"]["mtime"] == 200.0
+    assert by_source["/abs/a.md"]["ingested_at"] == 2.0
+    assert by_source["/abs/b.md"]["chunks"] == 1
+    assert by_source["/abs/b.md"]["mtime"] == 50.0
+    assert by_source["/abs/b.md"]["ingested_at"] == 3.0
+
+
 def test_filterable_fields_declared_dont_crash(
     tidb_settings: TiDBSettings,
     embedding_provider: DeterministicEmbeddingProvider,

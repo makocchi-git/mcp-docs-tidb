@@ -6,7 +6,7 @@ This server assumes that a TiDB instance is already running and reachable. It do
 
 The repository can be used in two complementary ways:
 
-- **As an MCP server** — wire it into Claude Desktop / Cursor / Windsurf / Claude Code and call the `docs-tidb-find` / `docs-tidb-store` / `docs-tidb-ingest` tools. See the rest of this README.
+- **As an MCP server** — wire it into Claude Desktop / Cursor / Windsurf / Claude Code and call the `docs-tidb-find` / `docs-tidb-list` / `docs-tidb-store` / `docs-tidb-ingest` tools. See the rest of this README.
 - **As a Claude Code skill** — `SKILL.md` in the repo root teaches Claude *how to use this project well* (when to ingest vs. store, dimension pitfalls, search etiquette). See [Use as a Claude Code skill](#use-as-a-claude-code-skill). Skill and MCP server are independent: the skill nudges Claude toward correct usage, the MCP server actually serves the data. They are most useful together.
 
 ## Requirements
@@ -87,6 +87,29 @@ Performs a similarity search using `VEC_COSINE_DISTANCE`.
 
 Returns the top `TIDB_SEARCH_LIMIT` (default 10) matches ordered by cosine distance ascending.
 
+### `docs-tidb-list`
+
+Lists the documents currently registered in a collection, grouped by `metadata.source`. Use it to inspect what has already been ingested (e.g. before re-ingesting) or to check freshness.
+
+| Argument | Type | Description |
+| --- | --- | --- |
+| `collection_name` | string | The TiDB table to inspect. Omitted when `COLLECTION_NAME` is configured as default. |
+
+Returns a list of objects, one per distinct `metadata.source` value:
+
+```json
+[
+  {
+    "source": "/abs/path/to/file.md",
+    "chunks": 12,
+    "mtime": 1700000000.0,
+    "ingested_at": 1700000050.5
+  }
+]
+```
+
+`mtime` and `ingested_at` are Unix epoch seconds (or `null` when the metadata key is absent). Rows whose metadata has no `source` key are ignored. Returns an empty list when the collection does not exist yet. This tool stays registered even with `TIDB_READ_ONLY=1`.
+
 ## Environment variables
 
 ### TiDB connection
@@ -114,6 +137,7 @@ Returns the top `TIDB_SEARCH_LIMIT` (default 10) matches ordered by cosine dista
 | `TOOL_STORE_DESCRIPTION` | _(see source)_ | Override the description shown to the LLM for `docs-tidb-store`. |
 | `TOOL_FIND_DESCRIPTION` | _(see source)_ | Override the description shown to the LLM for `docs-tidb-find`. |
 | `TOOL_INGEST_DESCRIPTION` | _(see source)_ | Override the description shown to the LLM for `docs-tidb-ingest`. |
+| `TOOL_LIST_DESCRIPTION` | _(see source)_ | Override the description shown to the LLM for `docs-tidb-list`. |
 | `TIDB_ALLOW_ARBITRARY_FILTER` | `0` | When `1`, exposes a `query_filter` argument on `docs-tidb-find` that accepts a JSON filter spec. |
 
 ## Quick start
@@ -210,7 +234,7 @@ User-global (`~/.claude/settings.json`) or project-local (`.claude/settings.json
 
 Replace `/path/to/mcp-docs-tidb` with the absolute path to your local clone.
 
-Restart Claude Code (or run `/mcp` to reload without restarting) after editing. Confirm the server is live with `/mcp` — `mcp-docs-tidb` should appear in the list with its three tools.
+Restart Claude Code (or run `/mcp` to reload without restarting) after editing. Confirm the server is live with `/mcp` — `mcp-docs-tidb` should appear in the list with its four tools.
 
 ### 5. Optional: add a vector index
 

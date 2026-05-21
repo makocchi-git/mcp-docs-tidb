@@ -22,6 +22,13 @@ DEFAULT_TOOL_INGEST_DESCRIPTION = (
     "Files are split into chunks; re-running on the same file replaces "
     "its previous chunks by default."
 )
+DEFAULT_TOOL_LIST_DESCRIPTION = (
+    "List the documents currently registered in a TiDB collection. \n"
+    "Returns one entry per distinct `metadata.source` with its chunk count "
+    "and latest `mtime` / `ingested_at` (Unix epoch seconds). \n"
+    "Use this to inspect what has already been ingested, e.g. before "
+    "re-ingesting, or to check freshness."
+)
 
 METADATA_COLUMN = "metadata"
 CONTENT_COLUMN = "content"
@@ -51,6 +58,10 @@ class ToolSettings(BaseSettings):
     tool_ingest_description: str = Field(
         default=DEFAULT_TOOL_INGEST_DESCRIPTION,
         validation_alias="TOOL_INGEST_DESCRIPTION",
+    )
+    tool_list_description: str = Field(
+        default=DEFAULT_TOOL_LIST_DESCRIPTION,
+        validation_alias="TOOL_LIST_DESCRIPTION",
     )
 
 
