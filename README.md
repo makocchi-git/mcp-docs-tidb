@@ -18,15 +18,21 @@ The repository can be used in two complementary ways:
 
 ## Installation
 
-This project is not published to PyPI. Clone the repository and install dependencies with `uv`:
+`uvx` (bundled with [uv](https://docs.astral.sh/uv/)) can run the tools directly from GitHub — no clone required:
 
 ```bash
-git clone https://github.com/your-org/mcp-docs-tidb.git
+uvx --from git+https://github.com/makocchi-git/mcp-docs-tidb mcp-docs-tidb
+```
+
+An isolated environment is created on first run and cached for subsequent calls. To pin to a specific commit or tag, append `@<ref>` to the URL (e.g. `@main`, `@v0.1.0`).
+
+For development (running tests, linting, etc.), clone the repository and use `uv run` instead:
+
+```bash
+git clone https://github.com/makocchi-git/mcp-docs-tidb.git
 cd mcp-docs-tidb
 uv sync
 ```
-
-All commands below assume you run them from the repository root, or that you pass `--project /path/to/mcp-docs-tidb` to `uv run`.
 
 ## Provided MCP tools
 
@@ -160,15 +166,15 @@ The default endpoint is `127.0.0.1:4000`, user `root`, no password — which mat
 ### 2. Run the MCP server
 
 ```bash
-uv run mcp-docs-tidb
+uvx --from git+https://github.com/makocchi-git/mcp-docs-tidb mcp-docs-tidb
 ```
 
 To accept HTTP clients instead of stdio:
 
 ```bash
-uv run mcp-docs-tidb --transport streamable-http
+uvx --from git+https://github.com/makocchi-git/mcp-docs-tidb mcp-docs-tidb --transport streamable-http
 # or, legacy SSE
-uv run mcp-docs-tidb --transport sse
+uvx --from git+https://github.com/makocchi-git/mcp-docs-tidb mcp-docs-tidb --transport sse
 ```
 
 ### 3. Wire it up to Claude Desktop
@@ -179,8 +185,12 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
 {
   "mcpServers": {
     "mcp-docs-tidb": {
-      "command": "uv",
-      "args": ["run", "--project", "/path/to/mcp-docs-tidb", "mcp-docs-tidb"],
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/makocchi-git/mcp-docs-tidb",
+        "mcp-docs-tidb"
+      ],
       "env": {
         "TIDB_HOST": "127.0.0.1",
         "TIDB_PORT": "4000",
@@ -194,15 +204,13 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
 }
 ```
 
-Replace `/path/to/mcp-docs-tidb` with the absolute path to your local clone.
-
 ### 4. Wire it up to Claude Code
 
 **Option A — CLI (one-shot)**
 
 ```bash
-claude mcp add mcp-docs-tidb uv \
-  --args "run,--project,/path/to/mcp-docs-tidb,mcp-docs-tidb" \
+claude mcp add mcp-docs-tidb uvx \
+  --args "--from,git+https://github.com/makocchi-git/mcp-docs-tidb,mcp-docs-tidb" \
   -e TIDB_HOST=127.0.0.1 \
   -e TIDB_PORT=4000 \
   -e TIDB_USER=root \
@@ -220,8 +228,12 @@ User-global (`~/.claude/settings.json`) or project-local (`.claude/settings.json
 {
   "mcpServers": {
     "mcp-docs-tidb": {
-      "command": "uv",
-      "args": ["run", "--project", "/path/to/mcp-docs-tidb", "mcp-docs-tidb"],
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/makocchi-git/mcp-docs-tidb",
+        "mcp-docs-tidb"
+      ],
       "env": {
         "TIDB_HOST": "127.0.0.1",
         "TIDB_PORT": "4000",
@@ -234,8 +246,6 @@ User-global (`~/.claude/settings.json`) or project-local (`.claude/settings.json
   }
 }
 ```
-
-Replace `/path/to/mcp-docs-tidb` with the absolute path to your local clone.
 
 Restart Claude Code (or run `/mcp` to reload without restarting) after editing. Confirm the server is live with `/mcp` — `mcp-docs-tidb` should appear in the list with its four tools.
 
@@ -341,24 +351,25 @@ There are two routes to populate a collection from existing files:
 ```bash
 # Ingest every Markdown file under ./docs into the `kb` table.
 TIDB_HOST=127.0.0.1 TIDB_PORT=4000 TIDB_USER=root TIDB_DATABASE=test \
-  uv run mcp-docs-tidb-ingest \
+  uvx --from git+https://github.com/makocchi-git/mcp-docs-tidb mcp-docs-tidb-ingest \
     --collection kb \
     --recursive --glob '*.md' \
     ./docs
 
 # Re-run after editing — same files get replaced atomically per file.
-uv run mcp-docs-tidb-ingest --collection kb --recursive --glob '*.md' ./docs
+uvx --from git+https://github.com/makocchi-git/mcp-docs-tidb mcp-docs-tidb-ingest \
+  --collection kb --recursive --glob '*.md' ./docs
 
 # Incremental refresh: skip files whose on-disk mtime is not newer than the
 # value already stored in TiDB. Ideal for cron-driven refreshes of a large
 # corpus where only a handful of files change between runs.
-uv run mcp-docs-tidb-ingest --collection kb --recursive --glob '*.md' \
-  --only-modified ./docs
+uvx --from git+https://github.com/makocchi-git/mcp-docs-tidb mcp-docs-tidb-ingest \
+  --collection kb --recursive --glob '*.md' --only-modified ./docs
 
 # Full rebuild: wipe every row first, then re-ingest everything below ./docs.
 # Useful after large-scale edits or to recover from inconsistent state.
-uv run mcp-docs-tidb-ingest --collection kb --recursive --glob '*.md' \
-  --truncate ./docs
+uvx --from git+https://github.com/makocchi-git/mcp-docs-tidb mcp-docs-tidb-ingest \
+  --collection kb --recursive --glob '*.md' --truncate ./docs
 ```
 
 Flags:
@@ -526,7 +537,7 @@ TIDB_DATABASE='test' \
 TIDB_SSL_VERIFY_CERT=1 \
 TIDB_SSL_CA=/etc/ssl/cert.pem \
 COLLECTION_NAME=kb \
-uv run mcp-docs-tidb
+uvx --from git+https://github.com/makocchi-git/mcp-docs-tidb mcp-docs-tidb
 ```
 
 ## Development

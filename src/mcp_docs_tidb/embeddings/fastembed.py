@@ -7,7 +7,6 @@ from __future__ import annotations
 from typing import Any, Literal, Optional
 
 from fastembed import TextEmbedding
-from fastembed.common.model_description import DenseModelDescription
 from pydantic import PrivateAttr
 
 from mcp_docs_tidb.embeddings.base import EmbeddingProvider
@@ -16,20 +15,34 @@ from mcp_docs_tidb.embeddings.base import EmbeddingProvider
 class FastEmbedProvider(EmbeddingProvider):
     """FastEmbed implementation of the embedding provider."""
 
-    _embedding_model: TextEmbedding = PrivateAttr()
+    _embedding_model: Optional[TextEmbedding] = PrivateAttr(default=None)
 
     def __init__(self, model_name: str, **data: Any):
-        embedding_model = TextEmbedding(model_name)
-        description: DenseModelDescription = (
-            embedding_model._get_model_description(model_name)
-        )
+        # Resolve dimensions without downloading the model so that the MCP
+        # server can complete its startup handshake immediately.
+        dim = FastEmbedProvider._resolve_dim(model_name)
         super().__init__(
             provider="fastembed",
             model_name=model_name,
-            dimensions=description.dim,
+            dimensions=dim,
             **data,
         )
-        self._embedding_model = embedding_model
+
+    @staticmethod
+    def _resolve_dim(model_name: str) -> int:
+        for m in TextEmbedding.list_supported_models():
+            if m["model"] == model_name:
+                return int(m["dim"])
+        # Unknown / custom model: must instantiate to obtain the dimension.
+        te = TextEmbedding(model_name)
+        desc = te._get_model_description(model_name)
+        return int(desc.dim)
+
+    def _model(self) -> TextEmbedding:
+        """Return the TextEmbedding instance, downloading the model on first call."""
+        if self._embedding_model is None:
+            self._embedding_model = TextEmbedding(self.model_name)
+        return self._embedding_model
 
     def get_source_embedding(
         self,
@@ -37,7 +50,7 @@ class FastEmbedProvider(EmbeddingProvider):
         source_type: Optional[Literal["text", "image"]] = "text",
         **kwargs: Any,
     ) -> list[float]:
-        embeddings = list(self._embedding_model.passage_embed([source]))
+        embeddings = list(self._model().passage_embed([source]))
         return embeddings[0].tolist()
 
     def get_source_embeddings(
@@ -46,7 +59,7 @@ class FastEmbedProvider(EmbeddingProvider):
         source_type: Optional[Literal["text", "image"]] = "text",
         **kwargs: Any,
     ) -> list[list[float]]:
-        embeddings = list(self._embedding_model.passage_embed(sources))
+        embeddings = list(self._model().passage_embed(sources))
         return [e.tolist() for e in embeddings]
 
     def get_query_embedding(
@@ -55,5 +68,5 @@ class FastEmbedProvider(EmbeddingProvider):
         source_type: Optional[Literal["text", "image"]] = "text",
         **kwargs: Any,
     ) -> list[float]:
-        embeddings = list(self._embedding_model.query_embed([query]))
+        embeddings = list(self._model().query_embed([query]))
         return embeddings[0].tolist()
