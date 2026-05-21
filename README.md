@@ -160,7 +160,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
         "TIDB_USER": "root",
         "TIDB_PASSWORD": "",
         "TIDB_DATABASE": "test",
-        "COLLECTION_NAME": "mcp_memory"
+        "COLLECTION_NAME": "kb"
       }
     }
   }
@@ -180,7 +180,7 @@ claude mcp add mcp-docs-tidb uv \
   -e TIDB_PORT=4000 \
   -e TIDB_USER=root \
   -e TIDB_DATABASE=test \
-  -e COLLECTION_NAME=mcp_memory
+  -e COLLECTION_NAME=kb
 ```
 
 This appends the server to your user-global `~/.claude/settings.json`. Append `--scope project` to write to `.claude/settings.json` instead (project-local).
@@ -201,7 +201,7 @@ User-global (`~/.claude/settings.json`) or project-local (`.claude/settings.json
         "TIDB_USER": "root",
         "TIDB_PASSWORD": "",
         "TIDB_DATABASE": "test",
-        "COLLECTION_NAME": "mcp_memory"
+        "COLLECTION_NAME": "kb"
       }
     }
   }
@@ -240,7 +240,7 @@ If the table already exists, this flag has no effect — TiDB only adds the inde
 ### Option B. `ALTER TABLE` an existing table
 
 ```sql
-ALTER TABLE mcp_memory
+ALTER TABLE kb
   ADD VECTOR INDEX idx_embedding
     ((VEC_COSINE_DISTANCE(embedding))) USING HNSW;
 ```
@@ -498,7 +498,7 @@ TIDB_PASSWORD='your-password' \
 TIDB_DATABASE='test' \
 TIDB_SSL_VERIFY_CERT=1 \
 TIDB_SSL_CA=/etc/ssl/cert.pem \
-COLLECTION_NAME=mcp_memory \
+COLLECTION_NAME=kb \
 uv run mcp-docs-tidb
 ```
 
