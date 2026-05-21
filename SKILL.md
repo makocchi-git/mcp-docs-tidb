@@ -1,13 +1,13 @@
 ---
 name: tidb-docs
-description: Use this skill when the user wants to index, search, or maintain a corpus of local documents in a TiDB vector store via the mcp-docs-tidb project. Triggers include "ingest these docs into TiDB", "find X in the TiDB knowledge base", "refresh the kb collection", "set up TiDB document search", or any task that involves the `tidb-ingest`, `tidb-find`, or `tidb-store` MCP tools, or the `mcp-docs-tidb-ingest` CLI.
+description: Use this skill when the user wants to index, search, or maintain a corpus of local documents in a TiDB vector store via the mcp-docs-tidb project. Triggers include "ingest these docs into TiDB", "find X in the TiDB knowledge base", "refresh the kb collection", "set up TiDB document search", or any task that involves the `docs-tidb-ingest`, `docs-tidb-find`, or `docs-tidb-store` MCP tools, or the `mcp-docs-tidb-ingest` CLI.
 ---
 
 # TiDB document store skill
 
-This skill drives the `mcp-docs-tidb` project: a vector-search backend that stores chunked documents in TiDB and exposes them to the LLM through MCP tools (`tidb-ingest`, `tidb-find`, `tidb-store`) and an equivalent CLI (`mcp-docs-tidb-ingest`).
+This skill drives the `mcp-docs-tidb` project: a vector-search backend that stores chunked documents in TiDB and exposes them to the LLM through MCP tools (`docs-tidb-ingest`, `docs-tidb-find`, `docs-tidb-store`) and an equivalent CLI (`mcp-docs-tidb-ingest`).
 
-Use it when the user asks to load documents into TiDB, search them, or maintain a knowledge base — *not* for ad-hoc memories during a conversation (those go through `tidb-store` directly with no skill involvement).
+Use it when the user asks to load documents into TiDB, search them, or maintain a knowledge base — *not* for ad-hoc memories during a conversation (those go through `docs-tidb-store` directly with no skill involvement).
 
 ## Prerequisites — check first
 
@@ -23,13 +23,13 @@ If TiDB is unreachable, stop and ask the user to start it (`tiup playground v8.4
 
 | User intent | Use |
 | --- | --- |
-| "Index/load/refresh these files into TiDB" | `tidb-ingest` MCP tool (if available in this session) or `mcp-docs-tidb-ingest` CLI |
-| "Find / search / what does X say about Y" | `tidb-find` MCP tool |
-| "Remember this single fact / note" | `tidb-store` MCP tool (not bulk) |
+| "Index/load/refresh these files into TiDB" | `docs-tidb-ingest` MCP tool (if available in this session) or `mcp-docs-tidb-ingest` CLI |
+| "Find / search / what does X say about Y" | `docs-tidb-find` MCP tool |
+| "Remember this single fact / note" | `docs-tidb-store` MCP tool (not bulk) |
 | Automated/cron refresh outside a conversation | `mcp-docs-tidb-ingest` CLI |
 | Remote / Dockerised MCP server, filesystem not shared with the LLM client | CLI on the *server* host (the MCP tool would not see the client's files) |
 
-Never use `tidb-store` in a loop to populate a corpus — it is for single notes. Use `tidb-ingest` instead, which chunks and tags with `metadata.source` for safe re-ingest.
+Never use `docs-tidb-store` in a loop to populate a corpus — it is for single notes. Use `docs-tidb-ingest` instead, which chunks and tags with `metadata.source` for safe re-ingest.
 
 ## Workflow: indexing a corpus
 
@@ -50,7 +50,7 @@ Never use `tidb-store` in a loop to populate a corpus — it is for single notes
 
 ## Workflow: searching
 
-- Call `tidb-find` with the user's natural-language query. Do **not** pre-translate it to keywords — the embedding is the point.
+- Call `docs-tidb-find` with the user's natural-language query. Do **not** pre-translate it to keywords — the embedding is the point.
 - Results come back as `<entry><content>...</content><metadata>{"source": "...", "chunk": N}</metadata></entry>`. When citing back to the user, include the `source` path so they can verify.
 - If the result set is empty:
   - First confirm the collection has rows (`SELECT COUNT(*) FROM <collection>`).
@@ -68,7 +68,7 @@ If the user is mixing both, push back — pick one.
 
 ## Workflow: refreshing / removing
 
-- **Re-ingest a file**: just run `tidb-ingest` again. Old chunks for that source are deleted first.
+- **Re-ingest a file**: just run `docs-tidb-ingest` again. Old chunks for that source are deleted first.
 - **Delete a file's chunks without re-ingesting**: there is no MCP tool for this; use `mysql` directly:
   ```sql
   DELETE FROM <collection>
@@ -85,13 +85,13 @@ If the user is mixing both, push back — pick one.
 | `Vector dimension mismatch` on insert | Embedding model changed after the table was created | `DROP TABLE` and re-ingest, or use a new collection name. |
 | `VECTOR INDEX` creation fails | Cluster has no TiFlash node | Either set `TIDB_USE_VECTOR_INDEX=0` (skip the index) or add a TiFlash replica. Check with `SELECT type FROM information_schema.cluster_info WHERE type='tiflash'`. |
 | `Access denied` | OS user leaked into `TIDB_USER` default | Set `TIDB_USER=root` (or the actual user) explicitly. |
-| Find returns nothing in a non-empty table | Search hit a different collection, or `TIDB_READ_ONLY=1` (no `tidb-store`/`tidb-ingest` registered — but `tidb-find` still works against existing data) | Confirm collection name; `SELECT COUNT(*) FROM <collection>`. |
+| Find returns nothing in a non-empty table | Search hit a different collection, or `TIDB_READ_ONLY=1` (no `docs-tidb-store`/`docs-tidb-ingest` registered — but `docs-tidb-find` still works against existing data) | Confirm collection name; `SELECT COUNT(*) FROM <collection>`. |
 | MCP tool says "path not found" | `paths` are resolved on the *server* host, not the client | Use the CLI on the server host, or share the filesystem (stdio transport already does). |
 
 ## Tone of responses
 
 - When indexing, name the collection and source paths so the user can spot mistakes.
-- When citing search results, always include the `metadata.source` path. Never present an answer derived from `tidb-find` results as if it were yours.
+- When citing search results, always include the `metadata.source` path. Never present an answer derived from `docs-tidb-find` results as if it were yours.
 - Don't invent collections, columns, or environment variables that aren't in this skill — fall back to "let me check the README" when unsure.
 
 ## Project pointers

@@ -34,9 +34,9 @@ async def test_default_registers_all_three_tools() -> None:
         embedding_provider=DeterministicEmbeddingProvider(dim=8),
     )
     assert await _registered_tool_names(server) == {
-        "tidb-find",
-        "tidb-store",
-        "tidb-ingest",
+        "docs-tidb-find",
+        "docs-tidb-store",
+        "docs-tidb-ingest",
     }
 
 
@@ -47,7 +47,7 @@ async def test_read_only_hides_store_and_ingest_tools() -> None:
         tidb_settings=TiDBSettings(read_only=True),
         embedding_provider=DeterministicEmbeddingProvider(dim=8),
     )
-    assert await _registered_tool_names(server) == {"tidb-find"}
+    assert await _registered_tool_names(server) == {"docs-tidb-find"}
 
 
 @pytest.mark.asyncio
@@ -57,9 +57,9 @@ async def test_default_collection_hides_collection_argument() -> None:
         tidb_settings=TiDBSettings(collection_name="mcp_default"),
         embedding_provider=DeterministicEmbeddingProvider(dim=8),
     )
-    find_params = await _tool_param_names(server, "tidb-find")
-    store_params = await _tool_param_names(server, "tidb-store")
-    ingest_params = await _tool_param_names(server, "tidb-ingest")
+    find_params = await _tool_param_names(server, "docs-tidb-find")
+    store_params = await _tool_param_names(server, "docs-tidb-store")
+    ingest_params = await _tool_param_names(server, "docs-tidb-ingest")
     assert "collection_name" not in find_params
     assert "collection_name" not in store_params
     assert "collection_name" not in ingest_params
@@ -72,7 +72,7 @@ async def test_ingest_tool_exposes_expected_args() -> None:
         tidb_settings=TiDBSettings(),
         embedding_provider=DeterministicEmbeddingProvider(dim=8),
     )
-    params = await _tool_param_names(server, "tidb-ingest")
+    params = await _tool_param_names(server, "docs-tidb-ingest")
     assert {
         "paths",
         "collection_name",
@@ -106,7 +106,7 @@ async def test_filterable_fields_expose_typed_args() -> None:
         ),
         embedding_provider=DeterministicEmbeddingProvider(dim=8),
     )
-    params = await _tool_param_names(server, "tidb-find")
+    params = await _tool_param_names(server, "docs-tidb-find")
     assert {"category", "year"}.issubset(params)
     assert "query_filter" not in params
     assert "dict_filter" not in params
@@ -119,7 +119,7 @@ async def test_arbitrary_filter_exposes_query_filter() -> None:
         tidb_settings=TiDBSettings(allow_arbitrary_filter=True),
         embedding_provider=DeterministicEmbeddingProvider(dim=8),
     )
-    params = await _tool_param_names(server, "tidb-find")
+    params = await _tool_param_names(server, "docs-tidb-find")
     assert "query_filter" in params
     assert "dict_filter" not in params
 
@@ -131,6 +131,6 @@ async def test_no_filter_hides_all_filter_args() -> None:
         tidb_settings=TiDBSettings(),
         embedding_provider=DeterministicEmbeddingProvider(dim=8),
     )
-    params = await _tool_param_names(server, "tidb-find")
+    params = await _tool_param_names(server, "docs-tidb-find")
     assert "query_filter" not in params
     assert "dict_filter" not in params

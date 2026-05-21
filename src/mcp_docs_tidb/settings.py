@@ -18,7 +18,7 @@ DEFAULT_TOOL_INGEST_DESCRIPTION = (
     "Bulk-ingest local files or directories into a TiDB collection. \n"
     "Use this when the user asks to load, index, or refresh a set of "
     "documents into the vector store, rather than remembering a single "
-    "free-form note (use `tidb-store` for that). \n"
+    "free-form note (use `docs-tidb-store` for that). \n"
     "Files are split into chunks; re-running on the same file replaces "
     "its previous chunks by default."
 )

@@ -232,18 +232,18 @@ class TiDBMCPServer(FastMCP):
 
         self.tool(
             find_foo,
-            name="tidb-find",
+            name="docs-tidb-find",
             description=self.tool_settings.tool_find_description,
         )
 
         if not self.tidb_settings.read_only:
             self.tool(
                 store_foo,
-                name="tidb-store",
+                name="docs-tidb-store",
                 description=self.tool_settings.tool_store_description,
             )
             self.tool(
                 ingest_foo,
-                name="tidb-ingest",
+                name="docs-tidb-ingest",
                 description=self.tool_settings.tool_ingest_description,
             )

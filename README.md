@@ -6,7 +6,7 @@ This server assumes that a TiDB instance is already running and reachable. It do
 
 The repository can be used in two complementary ways:
 
-- **As an MCP server** — wire it into Claude Desktop / Cursor / Windsurf / Claude Code and call the `tidb-find` / `tidb-store` / `tidb-ingest` tools. See the rest of this README.
+- **As an MCP server** — wire it into Claude Desktop / Cursor / Windsurf / Claude Code and call the `docs-tidb-find` / `docs-tidb-store` / `docs-tidb-ingest` tools. See the rest of this README.
 - **As a Claude Code skill** — `SKILL.md` in the repo root teaches Claude *how to use this project well* (when to ingest vs. store, dimension pitfalls, search etiquette). See [Use as a Claude Code skill](#use-as-a-claude-code-skill). Skill and MCP server are independent: the skill nudges Claude toward correct usage, the MCP server actually serves the data. They are most useful together.
 
 ## Requirements
@@ -30,7 +30,7 @@ All commands below assume you run them from the repository root, or that you pas
 
 ## Provided MCP tools
 
-### `tidb-store`
+### `docs-tidb-store`
 
 Stores a piece of text (with optional metadata) into a TiDB table.
 
@@ -53,7 +53,7 @@ CREATE TABLE <collection> (
 
 This tool is hidden when `TIDB_READ_ONLY=1`.
 
-### `tidb-ingest`
+### `docs-tidb-ingest`
 
 Bulk-ingests local files or directories into a collection. Chunks each file, attaches `metadata.source` / `metadata.chunk`, and (by default) replaces any prior chunks for the same source file. Same engine as the CLI below, exposed to the LLM.
 
@@ -71,7 +71,7 @@ Bulk-ingests local files or directories into a collection. Chunks each file, att
 
 This tool is hidden when `TIDB_READ_ONLY=1`.
 
-### `tidb-find`
+### `docs-tidb-find`
 
 Performs a similarity search using `VEC_COSINE_DISTANCE`.
 
@@ -101,15 +101,15 @@ Returns the top `TIDB_SEARCH_LIMIT` (default 10) matches ordered by cosine dista
 | Variable | Default | Description |
 | --- | --- | --- |
 | `COLLECTION_NAME` | _(unset)_ | Default table. When set, the MCP tools drop their `collection_name` argument. |
-| `TIDB_SEARCH_LIMIT` | `10` | Max rows returned from `tidb-find`. |
-| `TIDB_READ_ONLY` | `0` | When `1`, the `tidb-store` tool is not registered. |
+| `TIDB_SEARCH_LIMIT` | `10` | Max rows returned from `docs-tidb-find`. |
+| `TIDB_READ_ONLY` | `0` | When `1`, the `docs-tidb-store` tool is not registered. |
 | `TIDB_USE_VECTOR_INDEX` | `0` | When `1`, auto-created tables include an inline `VECTOR INDEX ... USING HNSW` on the embedding column. Requires TiDB v8.4+ and a TiFlash replica in the cluster — see [Vector index](#vector-index). |
 | `EMBEDDING_PROVIDER` | `fastembed` | Embedding provider (only `fastembed` is supported today). |
 | `EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | FastEmbed model name. |
-| `TOOL_STORE_DESCRIPTION` | _(see source)_ | Override the description shown to the LLM for `tidb-store`. |
-| `TOOL_FIND_DESCRIPTION` | _(see source)_ | Override the description shown to the LLM for `tidb-find`. |
-| `TOOL_INGEST_DESCRIPTION` | _(see source)_ | Override the description shown to the LLM for `tidb-ingest`. |
-| `TIDB_ALLOW_ARBITRARY_FILTER` | `0` | When `1`, exposes a `query_filter` argument on `tidb-find` that accepts a JSON filter spec. |
+| `TOOL_STORE_DESCRIPTION` | _(see source)_ | Override the description shown to the LLM for `docs-tidb-store`. |
+| `TOOL_FIND_DESCRIPTION` | _(see source)_ | Override the description shown to the LLM for `docs-tidb-find`. |
+| `TOOL_INGEST_DESCRIPTION` | _(see source)_ | Override the description shown to the LLM for `docs-tidb-ingest`. |
+| `TIDB_ALLOW_ARBITRARY_FILTER` | `0` | When `1`, exposes a `query_filter` argument on `docs-tidb-find` that accepts a JSON filter spec. |
 
 ## Quick start
 
@@ -213,7 +213,7 @@ See [Vector index](#vector-index) below. The short version: set `TIDB_USE_VECTOR
 
 ## Vector index
 
-`tidb-find` issues `SELECT ... ORDER BY VEC_COSINE_DISTANCE(embedding, ?) LIMIT N`. Without an index, that's a full table scan — fine up to ~10⁴ rows, slow beyond. TiDB supports an [HNSW vector index](https://docs.pingcap.com/ai/vector-search-index/) that turns this into an approximate-nearest-neighbour lookup.
+`docs-tidb-find` issues `SELECT ... ORDER BY VEC_COSINE_DISTANCE(embedding, ?) LIMIT N`. Without an index, that's a full table scan — fine up to ~10⁴ rows, slow beyond. TiDB supports an [HNSW vector index](https://docs.pingcap.com/ai/vector-search-index/) that turns this into an approximate-nearest-neighbour lookup.
 
 ### Option A. `TIDB_USE_VECTOR_INDEX=1` — auto-create with the table
 
@@ -247,7 +247,7 @@ ALTER TABLE mcp_memory
 - The index uses **cosine distance** (`VEC_COSINE_DISTANCE`). If you need `VEC_L2_DISTANCE` instead, do not use this flag — drop the auto index and create your own via `ALTER TABLE`.
 - The index is **read-side only**: writes still go through TiKV; reads use TiFlash. Expect a brief lag before fresh inserts are searchable through the index.
 
-Without an index, `tidb-find` still works — it just performs a full scan.
+Without an index, `docs-tidb-find` still works — it just performs a full scan.
 
 ## Embedding dimension
 
@@ -301,7 +301,7 @@ The skill is **independent of how this project is installed**: you can pull `SKI
 
 There are two routes to populate a collection from existing files:
 
-1. **MCP tool `tidb-ingest`** — ask the LLM to "load `~/docs` into the `kb` collection". The server reads the files itself and writes the chunks. Good for interactive use from Claude Desktop / Cursor / Windsurf when the MCP server and client share a filesystem.
+1. **MCP tool `docs-tidb-ingest`** — ask the LLM to "load `~/docs` into the `kb` collection". The server reads the files itself and writes the chunks. Good for interactive use from Claude Desktop / Cursor / Windsurf when the MCP server and client share a filesystem.
 2. **`mcp-docs-tidb-ingest` CLI** — run outside of any LLM conversation, e.g. from cron or CI to refresh a corpus. Same code path as the MCP tool; choose whichever fits your workflow.
 
 ### CLI
@@ -382,11 +382,11 @@ async def main():
 asyncio.run(main())
 ```
 
-`extra_metadata` is merged into every chunk's metadata, alongside the standard `source` / `chunk` keys. Combined with [filterable fields](#filtering-search-results) you can then filter `tidb-find` by, e.g., `team`.
+`extra_metadata` is merged into every chunk's metadata, alongside the standard `source` / `chunk` keys. Combined with [filterable fields](#filtering-search-results) you can then filter `docs-tidb-find` by, e.g., `team`.
 
 ## Filtering search results
 
-`tidb-find` supports filtering on values inside the `metadata` JSON column. Two mechanisms are available — pick at most one per deployment.
+`docs-tidb-find` supports filtering on values inside the `metadata` JSON column. Two mechanisms are available — pick at most one per deployment.
 
 ### Option A. Declared filterable fields (recommended)
 
@@ -437,7 +437,7 @@ if __name__ == "__main__":
     mcp.run(transport="stdio")
 ```
 
-`tidb-find` is then exposed to the LLM with the typed arguments `category: str | None`, `year: int | None`, `tags: list[str] | None`.
+`docs-tidb-find` is then exposed to the LLM with the typed arguments `category: str | None`, `year: int | None`, `tags: list[str] | None`.
 
 Supported `field_type` × `condition` combinations:
 
@@ -452,7 +452,7 @@ If `condition` is omitted, the field is still indexed but no argument is exposed
 
 ### Option B. Arbitrary JSON filter
 
-Set `TIDB_ALLOW_ARBITRARY_FILTER=1` to expose a `query_filter` argument on `tidb-find`. The value is a JSON object:
+Set `TIDB_ALLOW_ARBITRARY_FILTER=1` to expose a `query_filter` argument on `docs-tidb-find`. The value is a JSON object:
 
 ```json
 {

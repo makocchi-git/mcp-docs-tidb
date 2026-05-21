@@ -23,7 +23,7 @@ Integration tests (`tests/test_tidb_integration.py`) require a live TiDB instanc
 ```
 src/mcp_docs_tidb/
 ├── main.py            # CLI entrypoint — parses --transport and calls TiDBMCPServer.run()
-├── mcp_server.py      # TiDBMCPServer (extends FastMCP) — registers tidb-store / tidb-find / tidb-ingest tools
+├── mcp_server.py      # TiDBMCPServer (extends FastMCP) — registers docs-tidb-store / docs-tidb-find / docs-tidb-ingest tools
 ├── tidb.py            # TiDBConnector — aiomysql connection pool, CRUD, auto-CREATE TABLE
 ├── settings.py        # Pydantic-settings classes: TiDBSettings, ToolSettings, EmbeddingProviderSettings, FilterableField
 ├── ingest.py          # Chunking + bulk-write logic; also the mcp-docs-tidb-ingest CLI entrypoint
