@@ -1,3 +1,12 @@
+<h1 align="center">
+  MCP server for storing/retrieving documents in TiDB
+</h1>
+
+<p align="center">
+  <strong>🇺🇸English</strong> ·
+  <a href="docs/README.ja.md">🇯🇵日本語</a>
+</p>
+
 # mcp-docs-tidb
 
 An MCP (Model Context Protocol) server that exposes a [TiDB](https://www.pingcap.com/tidb-cloud/) instance as a semantic memory layer. It is heavily inspired by [`mcp-server-qdrant`](https://github.com/qdrant/mcp-server-qdrant) and follows the same `store` / `find` shape, but uses TiDB's native [`VECTOR`](https://docs.pingcap.com/tidb/stable/vector-search-overview) type and `VEC_COSINE_DISTANCE` function as the storage and similarity backend.
