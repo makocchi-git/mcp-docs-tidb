@@ -9,7 +9,7 @@
 
 # mcp-docs-tidb
 
-[TiDB](https://www.pingcap.com/tidb-cloud/) インスタンスをセマンティックメモリ層として公開する MCP (Model Context Protocol) サーバーです。[`mcp-server-qdrant`](https://github.com/qdrant/mcp-server-qdrant) に強くインスパイアされており、同じ `store` / `find` の形式を踏襲しながら、TiDB ネイティブの [`VECTOR`](https://docs.pingcap.com/tidb/stable/vector-search-overview) 型と `VEC_COSINE_DISTANCE` 関数をストレージおよび類似度検索のバックエンドとして使用します。
+[TiDB](https://www.pingcap.com/tidb-cloud/) インスタンスをセマンティックメモリ層として公開する MCP (Model Context Protocol) サーバーです。TiDB ネイティブの [`VECTOR`](https://docs.pingcap.com/tidb/stable/vector-search-overview) 型と `VEC_COSINE_DISTANCE` 関数をストレージおよび類似度検索のバックエンドとして使用します。
 
 このサーバーは TiDB インスタンスがすでに起動・到達可能な状態であることを前提としています。TiDB のプロビジョニングや起動は行いません。
 
