@@ -7,13 +7,46 @@ verifies the "replace on re-ingest" semantics.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
 from mcp_docs_tidb.ingest import chunk_text, collect_paths, ingest_paths
-from mcp_docs_tidb.tidb import TiDBConnector
+from mcp_docs_tidb.tidb import Entry, TiDBConnector
 
 from tests.conftest import requires_tidb
+
+
+class _RecordingConnector:
+    """
+    Minimal stub matching the duck-typed surface `ingest_paths` uses:
+    `delete_by_metadata_field(...)`, `get_max_numeric_metadata_value(...)`,
+    and `store(entry, *, collection_name)`.
+    """
+
+    def __init__(self, recorded_mtimes: dict[str, float] | None = None) -> None:
+        self.stored: list[tuple[Entry, str | None]] = []
+        self._recorded_mtimes = recorded_mtimes or {}
+
+    def delete_by_metadata_field(
+        self, *, collection_name: str | None, field_name: str, field_value: Any
+    ) -> int:
+        return 0
+
+    def get_max_numeric_metadata_value(
+        self,
+        *,
+        collection_name: str | None,
+        match_field: str,
+        match_value: Any,
+        value_field: str,
+    ) -> float | None:
+        if match_field == "source" and value_field == "mtime":
+            return self._recorded_mtimes.get(match_value)
+        return None
+
+    def store(self, entry: Entry, *, collection_name: str | None = None) -> None:
+        self.stored.append((entry, collection_name))
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +121,116 @@ def test_collect_paths_accepts_individual_files(tmp_path: Path) -> None:
 def test_collect_paths_missing_raises(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         collect_paths([tmp_path / "nope.md"])
+
+
+# ---------------------------------------------------------------------------
+# ingest_paths — metadata (unit tests with a stub connector)
+# ---------------------------------------------------------------------------
+
+
+def test_ingest_paths_records_mtime_and_ingested_at(tmp_path: Path) -> None:
+    f = tmp_path / "doc.md"
+    f.write_text("alpha beta gamma")
+    expected_mtime = f.stat().st_mtime
+
+    stub = _RecordingConnector()
+    written = ingest_paths(
+        [f],
+        collection_name="any",
+        connector=cast(TiDBConnector, stub),
+        chunk_chars=64,
+        overlap=0,
+    )
+
+    assert written == 1
+    assert len(stub.stored) == 1
+    entry, _ = stub.stored[0]
+    assert entry.metadata is not None
+    assert entry.metadata["source"] == str(f.resolve())
+    assert entry.metadata["chunk"] == 0
+    assert entry.metadata["mtime"] == expected_mtime
+    assert isinstance(entry.metadata["ingested_at"], float)
+    assert entry.metadata["ingested_at"] >= expected_mtime
+
+
+def test_only_modified_skips_file_when_mtime_not_newer(tmp_path: Path) -> None:
+    f = tmp_path / "doc.md"
+    f.write_text("payload")
+    source = str(f.resolve())
+    current = f.stat().st_mtime
+
+    stub = _RecordingConnector(recorded_mtimes={source: current})
+    written = ingest_paths(
+        [f],
+        collection_name="any",
+        connector=cast(TiDBConnector, stub),
+        chunk_chars=64,
+        overlap=0,
+        only_modified=True,
+    )
+
+    assert written == 0
+    assert stub.stored == []
+
+
+def test_only_modified_processes_when_file_is_newer(tmp_path: Path) -> None:
+    f = tmp_path / "doc.md"
+    f.write_text("payload")
+    source = str(f.resolve())
+    current = f.stat().st_mtime
+
+    stub = _RecordingConnector(recorded_mtimes={source: current - 10.0})
+    written = ingest_paths(
+        [f],
+        collection_name="any",
+        connector=cast(TiDBConnector, stub),
+        chunk_chars=64,
+        overlap=0,
+        only_modified=True,
+    )
+
+    assert written == 1
+    assert len(stub.stored) == 1
+
+
+def test_only_modified_processes_new_source(tmp_path: Path) -> None:
+    f = tmp_path / "doc.md"
+    f.write_text("payload")
+
+    stub = _RecordingConnector()  # no prior records
+    written = ingest_paths(
+        [f],
+        collection_name="any",
+        connector=cast(TiDBConnector, stub),
+        chunk_chars=64,
+        overlap=0,
+        only_modified=True,
+    )
+
+    assert written == 1
+    assert len(stub.stored) == 1
+
+
+def test_ingest_paths_mtime_constant_across_chunks(tmp_path: Path) -> None:
+    f = tmp_path / "doc.md"
+    f.write_text("abcdefghij" * 5)  # 50 chars -> multiple chunks
+    expected_mtime = f.stat().st_mtime
+
+    stub = _RecordingConnector()
+    ingest_paths(
+        [f],
+        collection_name="any",
+        connector=cast(TiDBConnector, stub),
+        chunk_chars=10,
+        overlap=0,
+    )
+
+    assert len(stub.stored) > 1
+    mtimes = {e.metadata["mtime"] for e, _ in stub.stored if e.metadata}
+    ingested = {e.metadata["ingested_at"] for e, _ in stub.stored if e.metadata}
+    assert mtimes == {expected_mtime}
+    # All chunks of one file share a single ingested_at stamp.
+    assert len(ingested) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -207,3 +350,91 @@ def test_delete_by_metadata_field_rejects_bad_name(
             field_name="bad name",
             field_value="x",
         )
+
+
+@requires_tidb
+def test_only_modified_skips_unchanged_file(
+    connector: TiDBConnector,
+    collection_name: str,
+    cleanup_table: list[str],
+    tmp_path: Path,
+) -> None:
+    cleanup_table.append(collection_name)
+
+    f = tmp_path / "doc.md"
+    f.write_text("payload one")
+
+    first = ingest_paths(
+        [f],
+        collection_name=collection_name,
+        connector=connector,
+        chunk_chars=64,
+        overlap=0,
+    )
+    assert first == 1
+
+    # Rewrite content but force mtime back to its original value so the
+    # only_modified comparison decides "not newer".
+    original_mtime = f.stat().st_mtime
+    f.write_text("payload one and a half")
+    import os
+
+    os.utime(f, (original_mtime, original_mtime))
+
+    second = ingest_paths(
+        [f],
+        collection_name=collection_name,
+        connector=connector,
+        chunk_chars=64,
+        overlap=0,
+        only_modified=True,
+    )
+    assert second == 0
+
+    client = connector._get_client()
+    rows = client.query(f"SELECT content FROM `{collection_name}`").to_list()
+    contents = {r["content"] for r in rows}
+    assert contents == {"payload one"}
+
+
+@requires_tidb
+def test_only_modified_processes_when_mtime_advances(
+    connector: TiDBConnector,
+    collection_name: str,
+    cleanup_table: list[str],
+    tmp_path: Path,
+) -> None:
+    cleanup_table.append(collection_name)
+
+    f = tmp_path / "doc.md"
+    f.write_text("payload one")
+    import os
+
+    base = f.stat().st_mtime
+    os.utime(f, (base, base))
+
+    ingest_paths(
+        [f],
+        collection_name=collection_name,
+        connector=connector,
+        chunk_chars=64,
+        overlap=0,
+    )
+
+    f.write_text("payload two")
+    os.utime(f, (base + 60.0, base + 60.0))
+
+    written = ingest_paths(
+        [f],
+        collection_name=collection_name,
+        connector=connector,
+        chunk_chars=64,
+        overlap=0,
+        only_modified=True,
+    )
+    assert written == 1
+
+    client = connector._get_client()
+    rows = client.query(f"SELECT content FROM `{collection_name}`").to_list()
+    contents = {r["content"] for r in rows}
+    assert contents == {"payload two"}

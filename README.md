@@ -39,6 +39,9 @@ Stores a piece of text (with optional metadata) into a TiDB table.
 | `information` | string | The text to remember. |
 | `collection_name` | string | The TiDB table to store into. Omitted when `COLLECTION_NAME` is configured as default. |
 | `metadata` | JSON (optional) | Arbitrary JSON metadata persisted alongside the text. |
+| `mtime` | float (optional) | Source modification time as a Unix epoch. Stored under `metadata.mtime`; takes precedence over any `mtime` already in `metadata`. Use it when the caller knows the freshness of the text (e.g. file mtime, upstream `Last-Modified`) so it can later be filtered or skipped on re-ingest. |
+
+Regardless of input, the server always stamps `metadata.ingested_at` with the current Unix epoch.
 
 The table is auto-created on first write with the following schema:
 
@@ -55,7 +58,7 @@ This tool is hidden when `TIDB_READ_ONLY=1`.
 
 ### `docs-tidb-ingest`
 
-Bulk-ingests local files or directories into a collection. Chunks each file, attaches `metadata.source` / `metadata.chunk`, and (by default) replaces any prior chunks for the same source file. Same engine as the CLI below, exposed to the LLM.
+Bulk-ingests local files or directories into a collection. Chunks each file, attaches `metadata.source` / `metadata.chunk` / `metadata.mtime` / `metadata.ingested_at`, and (by default) replaces any prior chunks for the same source file. Same engine as the CLI below, exposed to the LLM.
 
 | Argument | Type | Description |
 | --- | --- | --- |
@@ -66,6 +69,7 @@ Bulk-ingests local files or directories into a collection. Chunks each file, att
 | `chunk_chars` | int (default `2000`) | Max characters per chunk. |
 | `overlap` | int (default `200`) | Chunk overlap in characters. |
 | `replace` | bool (default `true`) | Delete existing chunks tagged with the same `source` before inserting. |
+| `only_modified` | bool (default `false`) | Skip files whose on-disk mtime is not newer than the `metadata.mtime` already stored for the same `source`. Files with no prior record are still processed. Useful for incremental refreshes. |
 
 > `paths` are resolved on the **server** host, not the MCP client. With stdio transport (the default Claude Desktop setup) they share a filesystem, but remote/Docker deployments may not — see "Loading documents into TiDB" for the equivalent CLI which is generally simpler to operate.
 
@@ -316,6 +320,12 @@ TIDB_HOST=127.0.0.1 TIDB_PORT=4000 TIDB_USER=root TIDB_DATABASE=test \
 
 # Re-run after editing — same files get replaced atomically per file.
 uv run mcp-docs-tidb-ingest --collection kb --recursive --glob '*.md' ./docs
+
+# Incremental refresh: skip files whose on-disk mtime is not newer than the
+# value already stored in TiDB. Ideal for cron-driven refreshes of a large
+# corpus where only a handful of files change between runs.
+uv run mcp-docs-tidb-ingest --collection kb --recursive --glob '*.md' \
+  --only-modified ./docs
 ```
 
 Flags:
@@ -328,7 +338,8 @@ Flags:
 | `-r`, `--recursive` | off | Recurse into directories. |
 | `--glob` | `*.md` | Glob applied to directory inputs. |
 | `--no-replace` | off | Append instead of replacing previously-ingested chunks for the same source file. |
-| `-v`, `--verbose` | off | Log per-file progress. |
+| `--only-modified` | off | Skip files whose on-disk mtime is not newer than the `metadata.mtime` recorded for the same source. Files with no prior record are still processed. |
+| `-v`, `--verbose` | off | Log per-file progress (incl. which files were skipped by `--only-modified`). |
 
 ### What gets written
 
@@ -337,14 +348,15 @@ For each input file, the CLI:
 1. Reads the file as UTF-8.
 2. Splits it into character-based chunks of `--chunk-chars` with `--overlap` overlap.
 3. (By default) deletes existing rows whose `metadata.source` equals the absolute path of this file.
-4. Inserts one row per chunk with `metadata = {"source": "<abs path>", "chunk": <0-based index>}`.
+4. Inserts one row per chunk with `metadata = {"source": "<abs path>", "chunk": <0-based index>, "mtime": <file mtime, epoch s>, "ingested_at": <now, epoch s>}`.
 
-So a re-ingest of the same file produces the same row count regardless of how many times you've run it — useful for cron-driven refreshes.
+So a re-ingest of the same file produces the same row count regardless of how many times you've run it — useful for cron-driven refreshes. All chunks of a single ingest share the same `ingested_at`; `mtime` is the file's on-disk modification time at ingest time.
 
 ### Re-ingest semantics
 
 - **Default (replace per source)**: only the affected file's chunks are removed. Other files in the same collection are untouched.
 - **`--no-replace`**: previously-ingested chunks stay in place; new chunks are added. Use this only if you actually want versioned history.
+- **`--only-modified` (incremental)**: each input file's on-disk mtime is compared against the largest `metadata.mtime` already stored for the same `source`. Files where the on-disk mtime is not strictly greater are skipped — nothing is read, embedded, or written for them. Files with no prior record are always processed. Mutually compatible with `--no-replace`, but the common pairing is the default `replace=true` + `--only-modified`. Mind that this relies on the source file's mtime being trustworthy (e.g. some build steps or `git checkout` may rewrite mtimes).
 - **Schema change** (e.g. switching embedding models with a different dim): the CLI cannot recover from this — `DROP TABLE <collection>` first, then re-ingest.
 
 ### Python API
@@ -373,6 +385,7 @@ async def main():
             connector=connector,
             chunk_chars=1500,
             overlap=150,
+            only_modified=True,  # skip files whose mtime hasn't advanced
             extra_metadata={"team": "platform"},
         )
         print(f"wrote {n} chunks")
@@ -382,7 +395,7 @@ async def main():
 asyncio.run(main())
 ```
 
-`extra_metadata` is merged into every chunk's metadata, alongside the standard `source` / `chunk` keys. Combined with [filterable fields](#filtering-search-results) you can then filter `docs-tidb-find` by, e.g., `team`.
+`extra_metadata` is merged into every chunk's metadata, alongside the standard `source` / `chunk` / `mtime` / `ingested_at` keys. Combined with [filterable fields](#filtering-search-results) you can then filter `docs-tidb-find` by, e.g., `team`.
 
 ## Filtering search results
 

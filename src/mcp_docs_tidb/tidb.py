@@ -238,3 +238,39 @@ class TiDBConnector:
             {"value": field_value},
         )
         return int(result.rowcount)
+
+    def get_max_numeric_metadata_value(
+        self,
+        *,
+        collection_name: str | None,
+        match_field: str,
+        match_value: Any,
+        value_field: str,
+    ) -> float | None:
+        """
+        Return ``MAX(metadata.<value_field>)`` (cast to DOUBLE) across rows
+        whose ``metadata.<match_field>`` equals ``match_value``. Returns
+        ``None`` when no matching row exists or the table is absent.
+
+        Used by the incremental-ingest path to look up the previously
+        recorded ``mtime`` for a given source file.
+        """
+        for field in (match_field, value_field):
+            if not _IDENT_RE.match(field):
+                raise ValueError(f"Invalid metadata field name: {field!r}")
+        name = self._resolve_collection(collection_name)
+        if not self._collection_exists(name):
+            return None
+
+        client = self._get_client()
+        rows = client.query(
+            f"SELECT MAX(CAST(JSON_EXTRACT(`{METADATA_COLUMN}`, "
+            f"'$.{value_field}') AS DOUBLE)) AS v FROM `{name}` "
+            f"WHERE JSON_UNQUOTE(JSON_EXTRACT(`{METADATA_COLUMN}`, "
+            f"'$.{match_field}')) = :value",
+            {"value": match_value},
+        ).to_list()
+        if not rows:
+            return None
+        v = rows[0].get("v")
+        return float(v) if v is not None else None

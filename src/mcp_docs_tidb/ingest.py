@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import time
 from pathlib import Path
 from typing import Iterable
 
@@ -96,6 +97,7 @@ def ingest_paths(
     chunk_chars: int = 2000,
     overlap: int = 200,
     replace: bool = True,
+    only_modified: bool = False,
     extra_metadata: dict | None = None,
 ) -> int:
     """
@@ -105,11 +107,35 @@ def ingest_paths(
     When `replace=True` (default), any pre-existing chunks tagged with the
     same `metadata.source` are deleted first — so calling this twice with
     the same file leaves the table in the same state as calling it once.
+
+    When `only_modified=True`, each file is compared against the largest
+    `metadata.mtime` already recorded for the same `metadata.source`; files
+    whose on-disk mtime is not strictly greater are skipped entirely.
+    Files with no prior record are always processed.
     """
     total = 0
     for path in paths:
-        text = path.read_text(encoding="utf-8")
         source = str(path.resolve())
+        mtime = path.stat().st_mtime
+
+        if only_modified:
+            prev = connector.get_max_numeric_metadata_value(
+                collection_name=collection_name,
+                match_field="source",
+                match_value=source,
+                value_field="mtime",
+            )
+            if prev is not None and mtime <= prev:
+                logger.info(
+                    "Skipping %s (mtime %.6f <= recorded %.6f)",
+                    source,
+                    mtime,
+                    prev,
+                )
+                continue
+
+        text = path.read_text(encoding="utf-8")
+        ingested_at = time.time()
 
         if replace:
             removed = connector.delete_by_metadata_field(
@@ -122,7 +148,12 @@ def ingest_paths(
 
         chunks = chunk_text(text, max_chars=chunk_chars, overlap=overlap)
         for i, chunk in enumerate(chunks):
-            metadata: dict = {"source": source, "chunk": i}
+            metadata: dict = {
+                "source": source,
+                "chunk": i,
+                "mtime": mtime,
+                "ingested_at": ingested_at,
+            }
             if extra_metadata:
                 metadata.update(extra_metadata)
             connector.store(
@@ -183,6 +214,16 @@ def _build_argparser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--only-modified",
+        dest="only_modified",
+        action="store_true",
+        help=(
+            "Skip files whose on-disk mtime is not newer than the "
+            "metadata.mtime already stored for the same source. Files with "
+            "no prior record are still processed."
+        ),
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -212,6 +253,7 @@ def _run_cli(args: argparse.Namespace) -> int:
             chunk_chars=args.chunk_chars,
             overlap=args.overlap,
             replace=args.replace,
+            only_modified=args.only_modified,
         )
     finally:
         connector.close()

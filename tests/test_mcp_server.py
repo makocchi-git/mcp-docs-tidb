@@ -7,12 +7,28 @@ arbitrary filter).
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from mcp_docs_tidb.mcp_server import TiDBMCPServer
 from mcp_docs_tidb.settings import FilterableField, TiDBSettings, ToolSettings
+from mcp_docs_tidb.tidb import Entry
 
 from tests.conftest import DeterministicEmbeddingProvider
+
+
+class _StubContext:
+    async def debug(self, *_args: Any, **_kwargs: Any) -> None:
+        return None
+
+
+class _StubConnector:
+    def __init__(self) -> None:
+        self.stored: list[tuple[Entry, str | None]] = []
+
+    def store(self, entry: Entry, *, collection_name: str | None = None) -> None:
+        self.stored.append((entry, collection_name))
 
 
 async def _registered_tool_names(server: TiDBMCPServer) -> set[str]:
@@ -81,6 +97,7 @@ async def test_ingest_tool_exposes_expected_args() -> None:
         "chunk_chars",
         "overlap",
         "replace",
+        "only_modified",
     }.issubset(params)
 
 
@@ -134,3 +151,70 @@ async def test_no_filter_hides_all_filter_args() -> None:
     params = await _tool_param_names(server, "docs-tidb-find")
     assert "query_filter" not in params
     assert "dict_filter" not in params
+
+
+@pytest.mark.asyncio
+async def test_store_tool_exposes_mtime_argument() -> None:
+    server = TiDBMCPServer(
+        tool_settings=ToolSettings(),
+        tidb_settings=TiDBSettings(),
+        embedding_provider=DeterministicEmbeddingProvider(dim=8),
+    )
+    params = await _tool_param_names(server, "docs-tidb-store")
+    assert "mtime" in params
+
+
+@pytest.mark.asyncio
+async def test_store_tool_records_mtime_and_ingested_at() -> None:
+    server = TiDBMCPServer(
+        tool_settings=ToolSettings(),
+        tidb_settings=TiDBSettings(),
+        embedding_provider=DeterministicEmbeddingProvider(dim=8),
+    )
+    stub = _StubConnector()
+    server.tidb_connector = stub  # type: ignore[assignment]
+
+    tools = await server.get_tools()
+    store_fn = tools["docs-tidb-store"].fn
+
+    await store_fn(
+        ctx=_StubContext(),
+        information="hello world",
+        collection_name="kb",
+        metadata={"category": "fruit"},
+        mtime=1700000000.5,
+    )
+
+    assert len(stub.stored) == 1
+    entry, collection = stub.stored[0]
+    assert collection == "kb"
+    assert entry.content == "hello world"
+    assert entry.metadata is not None
+    assert entry.metadata["category"] == "fruit"
+    assert entry.metadata["mtime"] == 1700000000.5
+    assert isinstance(entry.metadata["ingested_at"], float)
+
+
+@pytest.mark.asyncio
+async def test_store_tool_without_mtime_still_stamps_ingested_at() -> None:
+    server = TiDBMCPServer(
+        tool_settings=ToolSettings(),
+        tidb_settings=TiDBSettings(),
+        embedding_provider=DeterministicEmbeddingProvider(dim=8),
+    )
+    stub = _StubConnector()
+    server.tidb_connector = stub  # type: ignore[assignment]
+
+    tools = await server.get_tools()
+    store_fn = tools["docs-tidb-store"].fn
+
+    await store_fn(
+        ctx=_StubContext(),
+        information="hello",
+        collection_name="kb",
+    )
+
+    entry, _ = stub.stored[0]
+    assert entry.metadata is not None
+    assert "mtime" not in entry.metadata
+    assert isinstance(entry.metadata["ingested_at"], float)

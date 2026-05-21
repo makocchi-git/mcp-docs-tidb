@@ -41,7 +41,7 @@ Never use `docs-tidb-store` in a loop to populate a corpus — it is for single 
      uv run mcp-docs-tidb-ingest \
        --collection <name> --recursive --glob '*.md' <paths...>
    ```
-   Re-running the same command is safe — chunks are replaced per source file by default. Pass `--no-replace` only if the user explicitly wants append-only history.
+   Re-running the same command is safe — chunks are replaced per source file by default. Pass `--no-replace` only if the user explicitly wants append-only history. For periodic refreshes of a large corpus where only a few files change, add `--only-modified` (or the `only_modified=True` argument on the MCP tool) so unchanged files are skipped based on their on-disk mtime vs. the `metadata.mtime` already in TiDB.
 4. **Report counts.** The tool/CLI returns "Ingested N chunk(s) from M file(s)". Surface that to the user verbatim — it's the only direct signal that re-ingest actually replaced rows.
 5. **Vector index decision.** Two paths, requires TiFlash in either case:
    - Set `TIDB_USE_VECTOR_INDEX=1` *before* the first ingest so the auto-created table includes `VECTOR INDEX ... USING HNSW` inline. Cleanest, but no-op against existing tables.
@@ -51,7 +51,7 @@ Never use `docs-tidb-store` in a loop to populate a corpus — it is for single 
 ## Workflow: searching
 
 - Call `docs-tidb-find` with the user's natural-language query. Do **not** pre-translate it to keywords — the embedding is the point.
-- Results come back as `<entry><content>...</content><metadata>{"source": "...", "chunk": N}</metadata></entry>`. When citing back to the user, include the `source` path so they can verify.
+- Results come back as `<entry><content>...</content><metadata>{"source": "...", "chunk": N, "mtime": ..., "ingested_at": ...}</metadata></entry>`. `mtime` and `ingested_at` are Unix epoch seconds (floats). When citing back to the user, include the `source` path so they can verify. If freshness matters, surface `mtime` too.
 - If the result set is empty:
   - First confirm the collection has rows (`SELECT COUNT(*) FROM <collection>`).
   - Then check `TIDB_SEARCH_LIMIT` is not 0/negative.
@@ -69,6 +69,7 @@ If the user is mixing both, push back — pick one.
 ## Workflow: refreshing / removing
 
 - **Re-ingest a file**: just run `docs-tidb-ingest` again. Old chunks for that source are deleted first.
+- **Periodic refresh of a directory**: add `--only-modified` (CLI) or `only_modified=True` (MCP tool). Each file's on-disk mtime is compared against the stored `metadata.mtime` and unchanged files are skipped entirely. Files not yet in TiDB are always processed.
 - **Delete a file's chunks without re-ingesting**: there is no MCP tool for this; use `mysql` directly:
   ```sql
   DELETE FROM <collection>

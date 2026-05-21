@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from typing import Annotated, Any, Optional
 
 from fastmcp import Context, FastMCP
@@ -92,9 +93,24 @@ class TiDBMCPServer(FastMCP):
                     description="Extra JSON metadata stored alongside the information."
                 ),
             ] = None,
+            mtime: Annotated[
+                Optional[float],
+                Field(
+                    description=(
+                        "Source modification time as a Unix epoch (seconds). "
+                        "Stored under metadata.mtime for freshness filtering / "
+                        "incremental re-ingest. Takes precedence over any "
+                        "`mtime` already present in `metadata`."
+                    )
+                ),
+            ] = None,
         ) -> str:
             await ctx.debug(f"Storing information in TiDB table {collection_name}")
-            entry = Entry(content=information, metadata=metadata)
+            merged_metadata: Metadata = dict(metadata) if metadata else {}
+            if mtime is not None:
+                merged_metadata["mtime"] = mtime
+            merged_metadata["ingested_at"] = time.time()
+            entry = Entry(content=information, metadata=merged_metadata)
             self.tidb_connector.store(entry, collection_name=collection_name)
             return f"Remembered: {information} in collection {collection_name}"
 
@@ -172,10 +188,21 @@ class TiDBMCPServer(FastMCP):
                     )
                 ),
             ] = True,
+            only_modified: Annotated[
+                bool,
+                Field(
+                    description=(
+                        "If true, skip files whose on-disk mtime is not newer "
+                        "than the metadata.mtime already stored for the same "
+                        "source. Files with no prior record are still processed."
+                    )
+                ),
+            ] = False,
         ) -> str:
             await ctx.debug(
                 f"Ingesting {len(paths)} input(s) into {collection_name} "
-                f"(recursive={recursive}, glob={glob!r}, replace={replace})"
+                f"(recursive={recursive}, glob={glob!r}, replace={replace}, "
+                f"only_modified={only_modified})"
             )
             try:
                 files = collect_paths(
@@ -193,6 +220,7 @@ class TiDBMCPServer(FastMCP):
                 chunk_chars=chunk_chars,
                 overlap=overlap,
                 replace=replace,
+                only_modified=only_modified,
             )
             return (
                 f"Ingested {written} chunk(s) from {len(files)} file(s) "
