@@ -165,14 +165,19 @@ def test_use_vector_index_adds_inline_hnsw_index(
     assert "vec_cosine_distance" in create_sql
 
 
-def test_use_vector_index_disabled_by_default(
-    connector: TiDBConnector, collection_name: str, cleanup_table: list[str]
+def test_use_vector_index_disabled_when_explicitly_set_false(
+    tidb_settings: TiDBSettings,
+    embedding_provider: DeterministicEmbeddingProvider,
+    collection_name: str,
+    cleanup_table: list[str],
 ) -> None:
     cleanup_table.append(collection_name)
 
-    connector.store(Entry(content="hello"), collection_name=collection_name)
+    tidb_settings = tidb_settings.model_copy(update={"use_vector_index": False})
+    conn = TiDBConnector(settings=tidb_settings, embedding_provider=embedding_provider)
+    conn.store(Entry(content="hello"), collection_name=collection_name)
 
-    client = connector._get_client()
+    client = conn._get_client()
     rows = client.query(f"SHOW CREATE TABLE `{collection_name}`").to_list()
     create_sql = rows[0]["Create Table"].lower() if rows else ""
 

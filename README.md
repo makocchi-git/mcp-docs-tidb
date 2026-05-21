@@ -137,7 +137,7 @@ Returns a list of objects, one per distinct `metadata.source` value:
 | `COLLECTION_NAME` | _(unset)_ | Default table. When set, the MCP tools drop their `collection_name` argument. |
 | `TIDB_SEARCH_LIMIT` | `10` | Max rows returned from `docs-tidb-find`. |
 | `TIDB_READ_ONLY` | `0` | When `1`, the `docs-tidb-store` tool is not registered. |
-| `TIDB_USE_VECTOR_INDEX` | `0` | When `1`, auto-created tables include an inline `VECTOR INDEX ... USING HNSW` on the embedding column. Requires TiDB v8.4+ and a TiFlash replica in the cluster — see [Vector index](#vector-index). |
+| `TIDB_USE_VECTOR_INDEX` | `1` | When `1`, auto-created tables include an inline `VECTOR INDEX ... USING HNSW` on the embedding column. Requires TiDB v8.4+ and a TiFlash replica in the cluster — see [Vector index](#vector-index). |
 | `EMBEDDING_PROVIDER` | `fastembed` | Embedding provider (only `fastembed` is supported today). |
 | `EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | FastEmbed model name. |
 | `TOOL_STORE_DESCRIPTION` | _(see source)_ | Override the description shown to the LLM for `docs-tidb-store`. |

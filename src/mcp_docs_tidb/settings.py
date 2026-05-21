@@ -156,7 +156,7 @@ class TiDBSettings(BaseSettings):
     read_only: bool = Field(default=False, validation_alias="TIDB_READ_ONLY")
 
     use_vector_index: bool = Field(
-        default=False, validation_alias="TIDB_USE_VECTOR_INDEX"
+        default=True, validation_alias="TIDB_USE_VECTOR_INDEX"
     )
 
     filterable_fields: list[FilterableField] | None = Field(default=None)
