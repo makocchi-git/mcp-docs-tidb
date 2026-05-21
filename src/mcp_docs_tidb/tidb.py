@@ -239,6 +239,24 @@ class TiDBConnector:
         )
         return int(result.rowcount)
 
+    def truncate_collection(self, *, collection_name: str | None) -> bool:
+        """
+        Remove every row from ``collection_name`` via ``TRUNCATE TABLE``.
+        Returns ``True`` when a truncate was issued and ``False`` when the
+        table does not exist yet (no-op).
+
+        The table schema is preserved; only its contents are emptied. The
+        cached pytidb ``Table`` is kept — re-popping it would force pytidb
+        to re-register the dynamically-built model class against
+        SQLAlchemy's metadata, which collides with the prior registration.
+        """
+        name = self._resolve_collection(collection_name)
+        if not self._collection_exists(name):
+            return False
+        client = self._get_client()
+        client.execute(f"TRUNCATE TABLE `{name}`")
+        return True
+
     def get_max_numeric_metadata_value(
         self,
         *,

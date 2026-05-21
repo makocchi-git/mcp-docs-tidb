@@ -27,11 +27,18 @@ class _RecordingConnector:
     def __init__(self, recorded_mtimes: dict[str, float] | None = None) -> None:
         self.stored: list[tuple[Entry, str | None]] = []
         self._recorded_mtimes = recorded_mtimes or {}
+        self.truncate_calls: list[str | None] = []
 
     def delete_by_metadata_field(
         self, *, collection_name: str | None, field_name: str, field_value: Any
     ) -> int:
         return 0
+
+    def truncate_collection(self, *, collection_name: str | None) -> bool:
+        self.truncate_calls.append(collection_name)
+        # Pretend the table existed.
+        self._recorded_mtimes.clear()
+        return True
 
     def get_max_numeric_metadata_value(
         self,
@@ -191,6 +198,48 @@ def test_only_modified_processes_when_file_is_newer(tmp_path: Path) -> None:
 
     assert written == 1
     assert len(stub.stored) == 1
+
+
+def test_truncate_collection_calls_connector(tmp_path: Path) -> None:
+    f = tmp_path / "doc.md"
+    f.write_text("payload")
+
+    stub = _RecordingConnector()
+    ingest_paths(
+        [f],
+        collection_name="kb",
+        connector=cast(TiDBConnector, stub),
+        chunk_chars=64,
+        overlap=0,
+        truncate_collection=True,
+    )
+
+    assert stub.truncate_calls == ["kb"]
+    assert len(stub.stored) == 1
+
+
+def test_truncate_overrides_only_modified(tmp_path: Path) -> None:
+    f = tmp_path / "doc.md"
+    f.write_text("payload")
+    source = str(f.resolve())
+    current = f.stat().st_mtime
+
+    # Even with a recorded mtime that would normally cause `only_modified`
+    # to skip the file, the truncate clears the history first and so the
+    # file ends up being processed.
+    stub = _RecordingConnector(recorded_mtimes={source: current})
+    written = ingest_paths(
+        [f],
+        collection_name="kb",
+        connector=cast(TiDBConnector, stub),
+        chunk_chars=64,
+        overlap=0,
+        only_modified=True,
+        truncate_collection=True,
+    )
+
+    assert stub.truncate_calls == ["kb"]
+    assert written == 1
 
 
 def test_only_modified_processes_new_source(tmp_path: Path) -> None:
@@ -395,6 +444,56 @@ def test_only_modified_skips_unchanged_file(
     rows = client.query(f"SELECT content FROM `{collection_name}`").to_list()
     contents = {r["content"] for r in rows}
     assert contents == {"payload one"}
+
+
+@requires_tidb
+def test_truncate_collection_wipes_existing_rows(
+    connector: TiDBConnector,
+    collection_name: str,
+    cleanup_table: list[str],
+    tmp_path: Path,
+) -> None:
+    cleanup_table.append(collection_name)
+
+    keep = tmp_path / "old.md"
+    keep.write_text("legacy content")
+    ingest_paths(
+        [keep],
+        collection_name=collection_name,
+        connector=connector,
+        chunk_chars=64,
+        overlap=0,
+    )
+
+    new = tmp_path / "new.md"
+    new.write_text("fresh content")
+    written = ingest_paths(
+        [new],
+        collection_name=collection_name,
+        connector=connector,
+        chunk_chars=64,
+        overlap=0,
+        truncate_collection=True,
+    )
+
+    assert written == 1
+    client = connector._get_client()
+    rows = client.query(f"SELECT content FROM `{collection_name}`").to_list()
+    contents = {r["content"] for r in rows}
+    assert contents == {"fresh content"}
+
+
+@requires_tidb
+def test_truncate_collection_noop_when_table_missing(
+    connector: TiDBConnector,
+    collection_name: str,
+) -> None:
+    # Table does not exist yet; truncate must not raise. No cleanup_table
+    # registration here — pytidb's drop_table errors on a missing table
+    # even with if_not_exists="skip".
+    assert (
+        connector.truncate_collection(collection_name=collection_name) is False
+    )
 
 
 @requires_tidb

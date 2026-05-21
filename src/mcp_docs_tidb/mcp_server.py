@@ -198,11 +198,22 @@ class TiDBMCPServer(FastMCP):
                     )
                 ),
             ] = False,
+            truncate_collection: Annotated[
+                bool,
+                Field(
+                    description=(
+                        "If true, TRUNCATE the target table before ingesting "
+                        "(schema is kept). Use this to rebuild a collection "
+                        "from scratch."
+                    )
+                ),
+            ] = False,
         ) -> str:
             await ctx.debug(
                 f"Ingesting {len(paths)} input(s) into {collection_name} "
                 f"(recursive={recursive}, glob={glob!r}, replace={replace}, "
-                f"only_modified={only_modified})"
+                f"only_modified={only_modified}, "
+                f"truncate_collection={truncate_collection})"
             )
             try:
                 files = collect_paths(
@@ -221,6 +232,7 @@ class TiDBMCPServer(FastMCP):
                 overlap=overlap,
                 replace=replace,
                 only_modified=only_modified,
+                truncate_collection=truncate_collection,
             )
             return (
                 f"Ingested {written} chunk(s) from {len(files)} file(s) "

@@ -70,6 +70,7 @@ Bulk-ingests local files or directories into a collection. Chunks each file, att
 | `overlap` | int (default `200`) | Chunk overlap in characters. |
 | `replace` | bool (default `true`) | Delete existing chunks tagged with the same `source` before inserting. |
 | `only_modified` | bool (default `false`) | Skip files whose on-disk mtime is not newer than the `metadata.mtime` already stored for the same `source`. Files with no prior record are still processed. Useful for incremental refreshes. |
+| `truncate_collection` | bool (default `false`) | `TRUNCATE` the target table before ingesting. The schema is preserved; every input file is then re-chunked and re-embedded. Combining with `only_modified=true` is allowed but pointless — after the truncate there is no prior `mtime` to compare against. |
 
 > `paths` are resolved on the **server** host, not the MCP client. With stdio transport (the default Claude Desktop setup) they share a filesystem, but remote/Docker deployments may not — see "Loading documents into TiDB" for the equivalent CLI which is generally simpler to operate.
 
@@ -326,6 +327,11 @@ uv run mcp-docs-tidb-ingest --collection kb --recursive --glob '*.md' ./docs
 # corpus where only a handful of files change between runs.
 uv run mcp-docs-tidb-ingest --collection kb --recursive --glob '*.md' \
   --only-modified ./docs
+
+# Full rebuild: wipe every row first, then re-ingest everything below ./docs.
+# Useful after large-scale edits or to recover from inconsistent state.
+uv run mcp-docs-tidb-ingest --collection kb --recursive --glob '*.md' \
+  --truncate ./docs
 ```
 
 Flags:
@@ -339,6 +345,7 @@ Flags:
 | `--glob` | `*.md` | Glob applied to directory inputs. |
 | `--no-replace` | off | Append instead of replacing previously-ingested chunks for the same source file. |
 | `--only-modified` | off | Skip files whose on-disk mtime is not newer than the `metadata.mtime` recorded for the same source. Files with no prior record are still processed. |
+| `--truncate` | off | `TRUNCATE TABLE` the collection before ingesting. Schema is kept; every row is wiped, then the inputs are re-chunked and re-embedded. Use to rebuild from scratch. |
 | `-v`, `--verbose` | off | Log per-file progress (incl. which files were skipped by `--only-modified`). |
 
 ### What gets written
@@ -357,7 +364,8 @@ So a re-ingest of the same file produces the same row count regardless of how ma
 - **Default (replace per source)**: only the affected file's chunks are removed. Other files in the same collection are untouched.
 - **`--no-replace`**: previously-ingested chunks stay in place; new chunks are added. Use this only if you actually want versioned history.
 - **`--only-modified` (incremental)**: each input file's on-disk mtime is compared against the largest `metadata.mtime` already stored for the same `source`. Files where the on-disk mtime is not strictly greater are skipped — nothing is read, embedded, or written for them. Files with no prior record are always processed. Mutually compatible with `--no-replace`, but the common pairing is the default `replace=true` + `--only-modified`. Mind that this relies on the source file's mtime being trustworthy (e.g. some build steps or `git checkout` may rewrite mtimes).
-- **Schema change** (e.g. switching embedding models with a different dim): the CLI cannot recover from this — `DROP TABLE <collection>` first, then re-ingest.
+- **`--truncate` (full rebuild)**: every row of the collection is removed via `TRUNCATE TABLE` *before* any input file is read. The table schema (including the `VECTOR(<dim>)` column and any indexes) is kept, so this is cheaper than `DROP TABLE` + first-ingest. Use it when the corpus shape has changed enough that incremental re-ingest would leave stale chunks behind (e.g. files were removed from the input directory). `--truncate` and `--no-replace` can coexist — `--no-replace` becomes a no-op since the truncate already cleared the slate.
+- **Schema change** (e.g. switching embedding models with a different dim): the CLI cannot recover from this — `DROP TABLE <collection>` first, then re-ingest. `--truncate` is not enough because the `VECTOR(<dim>)` column type is baked in.
 
 ### Python API
 

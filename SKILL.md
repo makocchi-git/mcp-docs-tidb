@@ -70,12 +70,13 @@ If the user is mixing both, push back — pick one.
 
 - **Re-ingest a file**: just run `docs-tidb-ingest` again. Old chunks for that source are deleted first.
 - **Periodic refresh of a directory**: add `--only-modified` (CLI) or `only_modified=True` (MCP tool). Each file's on-disk mtime is compared against the stored `metadata.mtime` and unchanged files are skipped entirely. Files not yet in TiDB are always processed.
+- **Full rebuild (same schema)**: add `--truncate` (CLI) or `truncate_collection=True` (MCP tool). The table is `TRUNCATE`d before any input is processed, then every file is re-chunked and re-embedded. Use this when files were *removed* from the source directory (`--only-modified` won't notice deletions) or to recover from inconsistent state. Cheaper than `DROP TABLE` because the schema and any vector indexes are preserved.
 - **Delete a file's chunks without re-ingesting**: there is no MCP tool for this; use `mysql` directly:
   ```sql
   DELETE FROM <collection>
    WHERE JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.source')) = '/abs/path/to/file.md';
   ```
-- **Wipe and rebuild**: `DROP TABLE <collection>;` then re-ingest. Required when changing embedding models with a different dimension.
+- **Wipe and rebuild**: `DROP TABLE <collection>;` then re-ingest. Required when changing embedding models with a different dimension. For same-schema rebuilds (e.g. files removed from the source), prefer `--truncate` / `truncate_collection=True` — it keeps the schema and indexes.
 
 ## Common pitfalls
 

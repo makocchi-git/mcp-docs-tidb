@@ -98,6 +98,7 @@ def ingest_paths(
     overlap: int = 200,
     replace: bool = True,
     only_modified: bool = False,
+    truncate_collection: bool = False,
     extra_metadata: dict | None = None,
 ) -> int:
     """
@@ -112,7 +113,19 @@ def ingest_paths(
     `metadata.mtime` already recorded for the same `metadata.source`; files
     whose on-disk mtime is not strictly greater are skipped entirely.
     Files with no prior record are always processed.
+
+    When `truncate_collection=True`, every row of `collection_name` is
+    removed via ``TRUNCATE TABLE`` *before* any file is processed. The
+    table schema is kept. This is the right knob for "rebuild from
+    scratch" runs; combining it with `only_modified=True` is allowed but
+    pointless — after the truncate there is no prior `mtime` to compare
+    against, so every file is processed.
     """
+    if truncate_collection:
+        truncated = connector.truncate_collection(collection_name=collection_name)
+        if truncated:
+            logger.info("Truncated collection %s", collection_name)
+
     total = 0
     for path in paths:
         source = str(path.resolve())
@@ -224,6 +237,16 @@ def _build_argparser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--truncate",
+        dest="truncate_collection",
+        action="store_true",
+        help=(
+            "TRUNCATE the target table before ingesting (table schema is "
+            "kept). Use this to rebuild a collection from scratch — every "
+            "input file is then re-chunked and re-embedded."
+        ),
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -254,6 +277,7 @@ def _run_cli(args: argparse.Namespace) -> int:
             overlap=args.overlap,
             replace=args.replace,
             only_modified=args.only_modified,
+            truncate_collection=args.truncate_collection,
         )
     finally:
         connector.close()

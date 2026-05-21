@@ -98,6 +98,7 @@ async def test_ingest_tool_exposes_expected_args() -> None:
         "overlap",
         "replace",
         "only_modified",
+        "truncate_collection",
     }.issubset(params)
 
 
