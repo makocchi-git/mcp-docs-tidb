@@ -15,6 +15,7 @@ new chunks. That gives idempotent, file-grained updates.
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import logging
 import sys
 import time
@@ -68,24 +69,47 @@ def chunk_text(
     return chunks
 
 
+def _is_excluded(path: Path, exclude_globs: list[str]) -> bool:
+    """Return True if path matches any of the exclude glob patterns.
+
+    Each pattern is matched against both the filename and the full path string
+    so that e.g. 'CHANGELOG.md' and '*/drafts/*' both work as expected.
+    """
+    name = path.name
+    full = str(path)
+    return any(
+        fnmatch.fnmatch(name, pat) or fnmatch.fnmatch(full, pat)
+        for pat in exclude_globs
+    )
+
+
 def collect_paths(
     paths: Iterable[str | Path],
     *,
     recursive: bool = False,
     glob: str = "*",
+    exclude_globs: list[str] | None = None,
 ) -> list[Path]:
     """
     Expand a mix of file and directory paths into a sorted list of files.
     Directories are expanded with `glob` (using `rglob` if `recursive`).
+    Files matching any pattern in `exclude_globs` are omitted.
     """
+    excludes = exclude_globs or []
     out: list[Path] = []
     for raw in paths:
         p = Path(raw)
         if p.is_dir():
             it = p.rglob(glob) if recursive else p.glob(glob)
-            out.extend(sorted(x for x in it if x.is_file()))
+            out.extend(
+                sorted(
+                    x for x in it
+                    if x.is_file() and not _is_excluded(x, excludes)
+                )
+            )
         elif p.is_file():
-            out.append(p)
+            if not _is_excluded(p, excludes):
+                out.append(p)
         else:
             raise FileNotFoundError(str(p))
     return out
@@ -249,6 +273,18 @@ def _build_argparser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--exclude-glob",
+        dest="exclude_globs",
+        action="append",
+        default=[],
+        metavar="PATTERN",
+        help=(
+            "Glob pattern for files to exclude. May be specified multiple times. "
+            "Matched against both the filename and the full path "
+            "(e.g. --exclude-glob 'CHANGELOG.md' --exclude-glob '*/drafts/*')."
+        ),
+    )
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -258,7 +294,12 @@ def _build_argparser() -> argparse.ArgumentParser:
 
 
 def _run_cli(args: argparse.Namespace) -> int:
-    files = collect_paths(args.paths, recursive=args.recursive, glob=args.glob)
+    files = collect_paths(
+        args.paths,
+        recursive=args.recursive,
+        glob=args.glob,
+        exclude_globs=args.exclude_globs,
+    )
     if not files:
         print("No files matched.", file=sys.stderr)
         return 1

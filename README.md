@@ -147,7 +147,10 @@ Returns a list of objects, one per distinct `metadata.source` value:
 The easiest path on macOS / Linux is `tiup playground`:
 
 ```bash
-tiup playground v8.5 --tiflash 0 --db 1 --pd 1 --kv 1
+tiup playground
+
+# or specifically with v8.4+ for vector support:
+tiup playground v8.5
 ```
 
 The default endpoint is `127.0.0.1:4000`, user `root`, no password — which matches the defaults of this server.

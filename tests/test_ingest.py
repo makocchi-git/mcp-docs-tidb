@@ -130,6 +130,50 @@ def test_collect_paths_missing_raises(tmp_path: Path) -> None:
         collect_paths([tmp_path / "nope.md"])
 
 
+def test_collect_paths_exclude_by_filename(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text("a")
+    (tmp_path / "CHANGELOG.md").write_text("changelog")
+    files = collect_paths([tmp_path], glob="*.md", exclude_globs=["CHANGELOG.md"])
+    assert [p.name for p in files] == ["a.md"]
+
+
+def test_collect_paths_exclude_by_path_pattern(tmp_path: Path) -> None:
+    drafts = tmp_path / "drafts"
+    drafts.mkdir()
+    (tmp_path / "good.md").write_text("good")
+    (drafts / "draft.md").write_text("draft")
+    files = collect_paths(
+        [tmp_path], recursive=True, glob="*.md", exclude_globs=["*/drafts/*"]
+    )
+    assert [p.name for p in files] == ["good.md"]
+
+
+def test_collect_paths_exclude_multiple_patterns(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text("a")
+    (tmp_path / "b.md").write_text("b")
+    (tmp_path / "c.md").write_text("c")
+    files = collect_paths(
+        [tmp_path], glob="*.md", exclude_globs=["b.md", "c.md"]
+    )
+    assert [p.name for p in files] == ["a.md"]
+
+
+def test_collect_paths_exclude_individual_file(tmp_path: Path) -> None:
+    keep = tmp_path / "keep.md"
+    skip = tmp_path / "skip.md"
+    keep.write_text("keep")
+    skip.write_text("skip")
+    files = collect_paths([keep, skip], exclude_globs=["skip.md"])
+    assert files == [keep]
+
+
+def test_collect_paths_exclude_empty_list_keeps_all(tmp_path: Path) -> None:
+    (tmp_path / "a.md").write_text("a")
+    (tmp_path / "b.md").write_text("b")
+    files = collect_paths([tmp_path], glob="*.md", exclude_globs=[])
+    assert [p.name for p in files] == ["a.md", "b.md"]
+
+
 # ---------------------------------------------------------------------------
 # ingest_paths — metadata (unit tests with a stub connector)
 # ---------------------------------------------------------------------------
