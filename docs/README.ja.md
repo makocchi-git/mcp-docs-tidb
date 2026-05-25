@@ -23,7 +23,7 @@
 - Python >= 3.10
 - [uv](https://docs.astral.sh/uv/) パッケージマネージャー
 - ベクター検索をサポートする到達可能な TiDB クラスター（TiDB v8.4+ セルフホスト、または TiDB Serverless）
-- 対象データベースに対して `CREATE TABLE`、`INSERT`、`SELECT` の権限を持つユーザー
+- 対象データベースに対して `CREATE TABLE`、`INSERT`、`SELECT` の権限を持つユーザー。`TIDB_DATABASE` に指定したデータベースが存在しない場合は初回接続時に自動作成されるため、`CREATE DATABASE` 権限も必要
 
 ## インストール
 
@@ -135,7 +135,7 @@ CREATE TABLE <collection> (
 | `TIDB_PORT` | `4000` | TiDB ポート。 |
 | `TIDB_USER` | `root` | TiDB ユーザー。 |
 | `TIDB_PASSWORD` | _（空）_ | TiDB パスワード。 |
-| `TIDB_DATABASE` | `test` | データベース/スキーマ名。 |
+| `TIDB_DATABASE` | `test` | データベース/スキーマ名。存在しない場合は初回接続時に自動作成（`CREATE DATABASE` 権限が必要）。 |
 | `TIDB_SSL_VERIFY_CERT` | `0` | TLS を有効にするには `1` に設定（TiDB Serverless では必須）。 |
 | `TIDB_SSL_CA` | _（未設定）_ | オプションの CA バンドルパス（例：`/etc/ssl/cert.pem`）。 |
 

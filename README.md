@@ -22,8 +22,8 @@ The repository can be used in two complementary ways:
 
 - Python >= 3.10
 - [uv](https://docs.astral.sh/uv/) package manager
-- A reachable TiDB cluster with vector support (TiDB v8.4+ self-hosted, or TiDB Serverless)
-- A user with privileges to `CREATE TABLE`, `INSERT`, and `SELECT` against the target database
+- A reachable TiDB cluster with vector support (TiDB v8.4+ self-hosted, or TiDB Cloud Starter)
+- A user with privileges to `CREATE TABLE`, `INSERT`, and `SELECT` against the target database; `CREATE DATABASE` is also required if `TIDB_DATABASE` does not exist yet (the server creates it automatically on first connect)
 
 ## Installation
 
@@ -135,7 +135,7 @@ Returns a list of objects, one per distinct `metadata.source` value:
 | `TIDB_PORT` | `4000` | TiDB port. |
 | `TIDB_USER` | `root` | TiDB user. |
 | `TIDB_PASSWORD` | _(empty)_ | TiDB password. |
-| `TIDB_DATABASE` | `test` | Database/schema name. |
+| `TIDB_DATABASE` | `test` | Database/schema name. Created automatically on first connect if it does not exist (requires `CREATE DATABASE` privilege). |
 | `TIDB_SSL_VERIFY_CERT` | `0` | Set to `1` to enable TLS (required for TiDB Serverless). |
 | `TIDB_SSL_CA` | _(unset)_ | Optional CA bundle path, e.g. `/etc/ssl/cert.pem`. |
 
