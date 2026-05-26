@@ -106,3 +106,13 @@ For multi-step tasks, state a brief plan:
 ```
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+## Documentation sync
+
+**Whenever `README.md` is edited, `docs/README.ja.md` must be updated in the same commit.**
+
+- Translate added or changed content into Japanese.
+- Preserve technical terms, env var names, and command names in English.
+- Match the existing Japanese style (ですます調, 「。」「、」punctuation).
+- Do not translate code blocks.
+- Use `/sync-ja-readme` to handle this if you need a guided workflow.
