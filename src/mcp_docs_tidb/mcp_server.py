@@ -77,6 +77,10 @@ class TiDBMCPServer(FastMCP):
             filterable_fields=tidb_settings.filterable_fields_dict(),
         )
 
+        # Instance attributes above must be assigned before super().__init__()
+        # because FastMCP's metaclass runs immediately and setup_tools() reads
+        # them. setup_tools() itself is called after super().__init__() so that
+        # FastMCP is fully initialised before self.tool() is invoked.
         super().__init__(name=name, instructions=instructions, **settings)
 
         self.setup_tools()
@@ -315,16 +319,20 @@ class TiDBMCPServer(FastMCP):
             self.tidb_settings.filterable_fields_dict_with_conditions()
         )
 
+        # Three-way filter-surface dispatch based on configuration:
+        #   1. filterable_fields declared with conditions → replace query_filter
+        #      with one typed argument per field (wrap_filters).
+        #   2. allow_arbitrary_filter=False (default) → no filter UI at all;
+        #      both filter arguments are hidden from the MCP tool schema.
+        #   3. allow_arbitrary_filter=True → expose the generic query_filter
+        #      dict but hide the lower-level dict_filter (internal plumbing).
         if len(filterable_conditions) > 0:
-            # Typed per-field arguments replace the generic query_filter.
             find_foo = wrap_filters(find_foo, filterable_conditions)
         elif not self.tidb_settings.allow_arbitrary_filter:
-            # No filter UI at all: hide both filter arguments from the schema.
             find_foo = make_partial_function(
                 find_foo, {"query_filter": None, "dict_filter": None}
             )
         else:
-            # Keep `query_filter`, hide the lower-level pair.
             find_foo = make_partial_function(find_foo, {"dict_filter": None})
 
         if self.tidb_settings.collection_name:

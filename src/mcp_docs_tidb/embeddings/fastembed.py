@@ -67,6 +67,10 @@ class FastEmbedProvider(EmbeddingProvider):
         source_type: Optional[Literal["text", "image"]] = "text",
         **kwargs: Any,
     ) -> list[float]:
+        # passage_embed uses the document-side instruction prefix (e.g.
+        # "passage: ") for asymmetric retrieval models. Do not swap with
+        # query_embed here — the two vectors must lie in the same subspace
+        # but are produced by different instruction prefixes.
         embeddings = list(self._model().passage_embed([source]))
         return embeddings[0].tolist()
 
@@ -85,5 +89,8 @@ class FastEmbedProvider(EmbeddingProvider):
         source_type: Optional[Literal["text", "image"]] = "text",
         **kwargs: Any,
     ) -> list[float]:
+        # query_embed uses the query-side instruction prefix (e.g. "query: ")
+        # so cosine similarity between a query vector and passage vectors is
+        # maximised when the content is relevant.
         embeddings = list(self._model().query_embed([query]))
         return embeddings[0].tolist()
