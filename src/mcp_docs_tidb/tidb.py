@@ -13,9 +13,9 @@ import logging
 import re
 import threading
 import uuid
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, PlainSerializer
 from pytidb import TiDBClient
 from pytidb.orm.types import JSON, TEXT
 from pytidb.schema import Column, Field, TableModel
@@ -37,6 +37,16 @@ ArbitraryFilter = dict[str, Any]
 PyTiDBFilter = dict[str, Any]
 
 _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+# SQLAlchemy ORM bypasses Pydantic's __init__ when hydrating rows from the
+# database, so BeforeValidator never fires for the embedding column.
+# PlainSerializer runs during model_dump() — which pytidb calls in to_list() —
+# and converts the numpy ndarray that pytidb returns into list[float], silencing
+# the PydanticSerializationUnexpectedValue warning without any data loss.
+_FloatList = Annotated[
+    list[float],
+    PlainSerializer(lambda v: v.tolist() if hasattr(v, "tolist") else v, return_type=list[float]),
+]
 
 
 class Entry(BaseModel):
@@ -89,6 +99,9 @@ def _build_chunk_model(
     The class is generated through ``TableModel.__class__`` so the
     metaclass runs and registers the table.
     """
+    # VectorField bakes the embedding dimension into the VECTOR(<dim>) column
+    # at table-creation time. Changing models later requires dropping and
+    # recreating the table — there is no ALTER TABLE path for vector columns.
     embedding_field = embedding_provider.VectorField(
         source_field=CONTENT_COLUMN,
         index=use_vector_index,
@@ -97,7 +110,7 @@ def _build_chunk_model(
         ID_COLUMN: str,
         CONTENT_COLUMN: str,
         f"{METADATA_COLUMN}_": dict,
-        EMBEDDING_COLUMN: list[float],
+        EMBEDDING_COLUMN: _FloatList,
     }
     namespace: dict[str, Any] = {
         "__tablename__": table_name,
@@ -221,6 +234,9 @@ class TiDBConnector:
 
     def store(self, entry: Entry, *, collection_name: str | None = None) -> None:
         table = self._get_table(self._resolve_collection(collection_name))
+        # The embedding column is intentionally absent here: pytidb's VectorField
+        # auto-embeds the value of source_field (CONTENT_COLUMN) at insert time
+        # using the registered EmbeddingProvider.
         table.insert(
             {
                 CONTENT_COLUMN: entry.content,

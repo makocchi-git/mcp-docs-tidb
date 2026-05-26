@@ -145,3 +145,8 @@ def cleanup_table(tidb_settings: TiDBSettings) -> Iterator[list[str]]:
             client.drop_table(table, if_not_exists="skip")
     finally:
         client.disconnect()
+
+
+async def _tools_by_name(server):
+    """Return {tool.name: tool} wrapping FastMCP 3.x list_tools()."""
+    return {t.name: t for t in await server.list_tools()}

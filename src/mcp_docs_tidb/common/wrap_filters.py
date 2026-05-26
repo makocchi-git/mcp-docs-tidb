@@ -84,6 +84,10 @@ def wrap_filters(
     new_signature = sig.replace(parameters=new_params)
     wrapper.__signature__ = new_signature  # type: ignore[attr-defined]
 
+    # FastMCP reads __annotations__ directly (in addition to __signature__)
+    # when building the JSON schema for a tool. Updating __signature__ alone
+    # is not enough — __annotations__ must be kept in sync so that the MCP
+    # client sees the correct typed parameter list for the find tool.
     new_annotations: dict[str, Any] = {}
     for param in new_signature.parameters.values():
         if param.annotation is not inspect.Parameter.empty:
