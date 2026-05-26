@@ -63,6 +63,16 @@ class ToolSettings(BaseSettings):
         default=DEFAULT_TOOL_LIST_DESCRIPTION,
         validation_alias="TOOL_LIST_DESCRIPTION",
     )
+    ingest_max_paths: int = Field(
+        default=1000,
+        ge=1,
+        le=100_000,
+        validation_alias="TIDB_INGEST_MAX_PATHS",
+    )
+    ingest_root: str | None = Field(
+        default=None,
+        validation_alias="TIDB_INGEST_ROOT",
+    )
 
 
 class EmbeddingProviderSettings(BaseSettings):
@@ -152,8 +162,20 @@ class TiDBSettings(BaseSettings):
     collection_name: str | None = Field(
         default=None, validation_alias="COLLECTION_NAME"
     )
-    search_limit: int = Field(default=10, validation_alias="TIDB_SEARCH_LIMIT")
+    search_limit: int = Field(default=10, ge=1, le=10_000, validation_alias="TIDB_SEARCH_LIMIT")
     read_only: bool = Field(default=False, validation_alias="TIDB_READ_ONLY")
+    connect_timeout: float = Field(
+        default=10.0,
+        ge=0.1,
+        le=300.0,
+        validation_alias="TIDB_CONNECT_TIMEOUT",
+    )
+    read_timeout: float = Field(
+        default=30.0,
+        ge=0.1,
+        le=600.0,
+        validation_alias="TIDB_READ_TIMEOUT",
+    )
 
     use_vector_index: bool = Field(
         default=True, validation_alias="TIDB_USE_VECTOR_INDEX"

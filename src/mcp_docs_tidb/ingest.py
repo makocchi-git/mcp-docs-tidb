@@ -156,7 +156,12 @@ def ingest_paths(
     total = 0
     for path in paths:
         source = str(path.resolve())
-        mtime = path.stat().st_mtime
+
+        try:
+            mtime = path.stat().st_mtime
+        except OSError as exc:
+            logger.warning("Skipping %s: cannot stat file: %s", source, exc)
+            continue
 
         if only_modified:
             prev = connector.get_max_numeric_metadata_value(
@@ -174,7 +179,30 @@ def ingest_paths(
                 )
                 continue
 
-        text = path.read_text(encoding="utf-8")
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            logger.warning("Skipping %s: cannot read file: %s", source, exc)
+            continue
+        except UnicodeDecodeError as exc:
+            logger.warning("Skipping %s: encoding error: %s", source, exc)
+            continue
+
+        # TOCTOU: re-check mtime after read; adopt post-read value if it drifted
+        try:
+            post_mtime = path.stat().st_mtime
+            if abs(post_mtime - mtime) >= 1.0:
+                logger.warning(
+                    "File %s was modified during read (pre=%.6f post=%.6f); "
+                    "using post-read mtime",
+                    source,
+                    mtime,
+                    post_mtime,
+                )
+                mtime = post_mtime
+        except OSError:
+            pass  # File may have been deleted after read; use original mtime
+
         ingested_at = time.time()
 
         if replace:
@@ -187,21 +215,45 @@ def ingest_paths(
                 logger.info("Removed %d stale chunk(s) for %s", removed, source)
 
         chunks = chunk_text(text, max_chars=chunk_chars, overlap=overlap)
-        for i, chunk in enumerate(chunks):
-            metadata: dict = dict(extra_metadata) if extra_metadata else {}
-            metadata.update(
-                {
-                    "source": source,
-                    "chunk": i,
-                    "mtime": mtime,
-                    "ingested_at": ingested_at,
-                }
-            )
-            connector.store(
-                Entry(content=chunk, metadata=metadata),
-                collection_name=collection_name,
-            )
-            total += 1
+        stored_count = 0
+        try:
+            for i, chunk in enumerate(chunks):
+                metadata: dict = dict(extra_metadata) if extra_metadata else {}
+                metadata.update(
+                    {
+                        "source": source,
+                        "chunk": i,
+                        "mtime": mtime,
+                        "ingested_at": ingested_at,
+                    }
+                )
+                connector.store(
+                    Entry(content=chunk, metadata=metadata),
+                    collection_name=collection_name,
+                )
+                stored_count += 1
+        except Exception:
+            if stored_count > 0:
+                # Compensate: remove partially stored chunks for this source
+                try:
+                    connector.delete_by_metadata_field(
+                        collection_name=collection_name,
+                        field_name="source",
+                        field_value=source,
+                    )
+                    logger.warning(
+                        "Rolled back %d partial chunk(s) for %s after store failure",
+                        stored_count,
+                        source,
+                    )
+                except Exception as del_exc:
+                    logger.warning(
+                        "Failed to roll back partial chunks for %s: %s",
+                        source,
+                        del_exc,
+                    )
+            raise
+        total += stored_count
         logger.info("Ingested %d chunk(s) from %s", len(chunks), source)
 
     return total

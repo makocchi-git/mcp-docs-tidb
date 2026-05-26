@@ -109,7 +109,7 @@ def test_empty_values_returns_none() -> None:
 
 def test_invalid_field_name_with_dot_is_rejected() -> None:
     fields = {"bad.name": _field("bad.name", "keyword", "==")}
-    with pytest.raises(ValueError, match="Unsupported filterable field name"):
+    with pytest.raises(ValueError, match="filterable field name"):
         build_filter_from_fields(fields, {"bad.name": "x"})
 
 
@@ -171,3 +171,80 @@ def test_arbitrary_combines_must_and_must_not_with_and() -> None:
             {"metadata.lang": {"$ne": "en"}},
         ]
     }
+
+
+# ---------------------------------------------------------------------------
+# Additional edge-case tests
+# ---------------------------------------------------------------------------
+
+
+def test_boolean_field_rejects_gt_operator() -> None:
+    fields = {"active": _field("active", "boolean", ">")}
+    with pytest.raises(ValueError, match="boolean field"):
+        build_filter_from_fields(fields, {"active": True})
+
+
+def test_boolean_field_rejects_gte_operator() -> None:
+    fields = {"active": _field("active", "boolean", ">=")}
+    with pytest.raises(ValueError, match="boolean field"):
+        build_filter_from_fields(fields, {"active": True})
+
+
+def test_float_field_rejects_any_condition() -> None:
+    fields = {"score": _field("score", "float", "any")}
+    with pytest.raises(ValueError, match="float field"):
+        build_filter_from_fields(fields, {"score": [0.1, 0.2]})
+
+
+def test_float_field_rejects_except_condition() -> None:
+    fields = {"score": _field("score", "float", "except")}
+    with pytest.raises(ValueError, match="float field"):
+        build_filter_from_fields(fields, {"score": [0.1]})
+
+
+def test_condition_none_field_is_skipped_even_with_value() -> None:
+    fields = {"hidden": _field("hidden", "keyword", None)}
+    f = build_filter_from_fields(fields, {"hidden": "value"})
+    assert f is None
+
+
+def test_negate_compound_clause_raises() -> None:
+    from mcp_docs_tidb.common.filters import _negate_clause
+
+    with pytest.raises(ValueError, match="compound"):
+        _negate_clause({"a": 1, "b": 2})
+
+
+def test_negate_clause_without_operator_raises() -> None:
+    from mcp_docs_tidb.common.filters import _negate_clause
+
+    with pytest.raises(ValueError, match="single operator"):
+        _negate_clause({"key": "not_a_dict"})
+
+
+def test_arbitrary_in_requires_nonempty_list() -> None:
+    spec = {"must": [{"field": "tags", "op": "in", "value": []}]}
+    with pytest.raises(ValueError, match="non-empty list"):
+        build_filter_from_arbitrary(spec)
+
+
+def test_arbitrary_not_in_requires_nonempty_list() -> None:
+    spec = {"must": [{"field": "tags", "op": "not_in", "value": []}]}
+    with pytest.raises(ValueError, match="non-empty list"):
+        build_filter_from_arbitrary(spec)
+
+
+def test_arbitrary_non_dict_spec_raises() -> None:
+    with pytest.raises(ValueError, match="JSON object"):
+        build_filter_from_arbitrary("not a dict")  # type: ignore[arg-type]
+
+
+def test_arbitrary_non_dict_condition_raises() -> None:
+    spec = {"must": ["not_an_object"]}
+    with pytest.raises(ValueError, match="object"):
+        build_filter_from_arbitrary(spec)
+
+
+def test_arbitrary_empty_dict_returns_none() -> None:
+    f = build_filter_from_arbitrary({})
+    assert f is None

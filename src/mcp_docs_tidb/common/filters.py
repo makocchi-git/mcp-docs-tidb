@@ -18,9 +18,12 @@ This module exposes two top-level builders:
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from mcp_docs_tidb.settings import METADATA_COLUMN, FilterableField
+
+_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 _OP_NEGATE = {
     "$eq": "$ne",
@@ -36,8 +39,11 @@ _OP_NEGATE = {
 
 def _metadata_key(field_name: str) -> str:
     """Dotted path to a top-level JSON field stored inside ``metadata``."""
-    if not field_name.replace("_", "").isalnum():
-        raise ValueError(f"Unsupported filterable field name: {field_name!r}")
+    if not _IDENT_RE.match(field_name):
+        raise ValueError(
+            f"Invalid filterable field name: {field_name!r}. "
+            "Allowed characters are [A-Za-z0-9_] and the name must not start with a digit."
+        )
     return f"{METADATA_COLUMN}.{field_name}"
 
 

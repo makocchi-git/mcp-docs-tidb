@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import uuid
 from typing import Any
 
@@ -45,10 +46,10 @@ class Entry(BaseModel):
     metadata: Metadata | None = None
 
 
-def _validate_identifier(name: str) -> str:
+def _validate_identifier(name: str, *, context: str = "TiDB table identifier") -> str:
     if not _IDENT_RE.match(name):
         raise ValueError(
-            f"Invalid TiDB table identifier: {name!r}. "
+            f"Invalid {context}: {name!r}. "
             "Allowed characters are [A-Za-z0-9_] and the name must not start with a digit."
         )
     return name
@@ -140,6 +141,7 @@ class TiDBConnector:
         self._use_vector_index = settings.use_vector_index
         self._client: TiDBClient | None = None
         self._tables: dict[str, Any] = {}
+        self._tables_lock = threading.Lock()
 
     def _get_client(self) -> TiDBClient:
         if self._client is None:
@@ -148,6 +150,11 @@ class TiDBConnector:
                 kwargs["enable_ssl"] = True
             if self._settings.ssl_ca:
                 kwargs["ssl_ca"] = self._settings.ssl_ca
+            # Pass timeouts via connect_args so the underlying MySQL driver honours them.
+            kwargs["connect_args"] = {
+                "connect_timeout": int(self._settings.connect_timeout),
+                "read_timeout": int(self._settings.read_timeout),
+            }
             self._client = TiDBClient.connect(
                 host=self._settings.host,
                 port=self._settings.port,
@@ -160,10 +167,17 @@ class TiDBConnector:
         return self._client
 
     def close(self) -> None:
-        if self._client is not None:
-            self._client.disconnect()
+        client = self._client
+        if client is None:
+            return
+        try:
+            client.disconnect()
+        except Exception:
+            logger.warning("Error during TiDB disconnect; connection may already be closed", exc_info=True)
+        finally:
             self._client = None
-            self._tables.clear()
+            with self._tables_lock:
+                self._tables.clear()
 
     def _resolve_collection(self, collection_name: str | None) -> str:
         name = collection_name or self._default_collection_name
@@ -175,6 +189,7 @@ class TiDBConnector:
 
     def _get_table(self, table_name: str):
         """Open or create the pytidb ``Table`` for ``table_name``."""
+        # Fast path: check without lock (common case)
         if table_name in self._tables:
             return self._tables[table_name]
 
@@ -185,8 +200,18 @@ class TiDBConnector:
             self._use_vector_index,
         )
         table = client.create_table(schema=model, if_exists="skip")
-        self._tables[table_name] = table
-        return table
+
+        # Double-checked locking: winner stores the table, losers discard theirs.
+        # Avoids SQLAlchemy declarative registry collision under concurrent calls.
+        with self._tables_lock:
+            if table_name not in self._tables:
+                if len(self._tables) >= 256:
+                    logger.warning(
+                        "TiDBConnector has %d cached tables; memory growth may indicate a bug",
+                        len(self._tables),
+                    )
+                self._tables[table_name] = table
+            return self._tables[table_name]
 
     def _collection_exists(self, table_name: str) -> bool:
         if table_name in self._tables:
@@ -227,6 +252,11 @@ class TiDBConnector:
         entries: list[Entry] = []
         for row in rows:
             raw_meta = row.get(f"{METADATA_COLUMN}_")
+            if raw_meta is not None and not isinstance(raw_meta, dict):
+                logger.warning(
+                    "Unexpected metadata type %s in row, treating as None",
+                    type(raw_meta).__name__,
+                )
             metadata: Metadata | None = raw_meta if isinstance(raw_meta, dict) else None
             entries.append(Entry(content=row[CONTENT_COLUMN], metadata=metadata))
         return entries
@@ -243,8 +273,7 @@ class TiDBConnector:
         field ``field_name`` equals ``field_value``. Returns the number of
         rows deleted.
         """
-        if not _IDENT_RE.match(field_name):
-            raise ValueError(f"Invalid metadata field name: {field_name!r}")
+        _validate_identifier(field_name, context="metadata field name")
         name = self._resolve_collection(collection_name)
         if not self._collection_exists(name):
             return 0
@@ -349,9 +378,8 @@ class TiDBConnector:
         Used by the incremental-ingest path to look up the previously
         recorded ``mtime`` for a given source file.
         """
-        for field in (match_field, value_field):
-            if not _IDENT_RE.match(field):
-                raise ValueError(f"Invalid metadata field name: {field!r}")
+        _validate_identifier(match_field, context="metadata field name")
+        _validate_identifier(value_field, context="metadata field name")
         name = self._resolve_collection(collection_name)
         if not self._collection_exists(name):
             return None

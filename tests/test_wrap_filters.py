@@ -8,6 +8,8 @@ from __future__ import annotations
 import inspect
 from typing import Any
 
+import pytest
+
 from mcp_docs_tidb.common.wrap_filters import wrap_filters
 from mcp_docs_tidb.settings import FilterableField
 
@@ -100,3 +102,33 @@ def test_any_condition_produces_list_type() -> None:
     )
     annotation = inspect.signature(wrapped).parameters["tags"].annotation
     assert "list[str]" in repr(annotation)
+
+
+def test_boolean_field_produces_bool_type() -> None:
+    def find(query: str, dict_filter: dict[str, Any] | None = None) -> str:
+        return "ok"
+
+    wrapped = wrap_filters(find, {"active": _field("active", "boolean", "==")})
+    annotation = inspect.signature(wrapped).parameters["active"].annotation
+    assert "bool" in repr(annotation)
+
+
+def test_unsupported_field_type_raises() -> None:
+    from mcp_docs_tidb.common.wrap_filters import wrap_filters as wf
+
+    def find(query: str, dict_filter: dict[str, Any] | None = None) -> str:
+        return "ok"
+
+    bad_field = _field("f", "keyword", "==")
+    object.__setattr__(bad_field, "field_type", "unsupported")
+    with pytest.raises(ValueError, match="Unsupported field type"):
+        wf(find, {"f": bad_field})
+
+
+def test_return_annotation_is_preserved() -> None:
+    def find(query: str, dict_filter: dict[str, Any] | None = None) -> list[str]:
+        return []
+
+    wrapped = wrap_filters(find, {"category": _field("category", "keyword", "==")})
+    sig = inspect.signature(wrapped)
+    assert sig.return_annotation is inspect.signature(find).return_annotation
