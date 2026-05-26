@@ -68,5 +68,5 @@ def test_async_function_is_wrapped_correctly() -> None:
     wrapped = make_partial_function(af, {"b": 10})
     sig = inspect.signature(wrapped)
     assert "b" not in sig.parameters
-    result = asyncio.get_event_loop().run_until_complete(wrapped(a=5))
+    result = asyncio.run(wrapped(a=5))
     assert result == 15

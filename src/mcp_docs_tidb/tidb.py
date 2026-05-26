@@ -13,9 +13,9 @@ import logging
 import re
 import threading
 import uuid
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, PlainSerializer
 from pytidb import TiDBClient
 from pytidb.orm.types import JSON, TEXT
 from pytidb.schema import Column, Field, TableModel
@@ -37,6 +37,11 @@ ArbitraryFilter = dict[str, Any]
 PyTiDBFilter = dict[str, Any]
 
 _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+_FloatList = Annotated[
+    list[float],
+    PlainSerializer(lambda v: v.tolist() if hasattr(v, "tolist") else v, return_type=list[float]),
+]
 
 
 class Entry(BaseModel):
@@ -97,7 +102,7 @@ def _build_chunk_model(
         ID_COLUMN: str,
         CONTENT_COLUMN: str,
         f"{METADATA_COLUMN}_": dict,
-        EMBEDDING_COLUMN: list[float],
+        EMBEDDING_COLUMN: _FloatList,
     }
     namespace: dict[str, Any] = {
         "__tablename__": table_name,

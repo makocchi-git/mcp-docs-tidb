@@ -11,7 +11,7 @@ from mcp_docs_tidb.mcp_server import TiDBMCPServer
 from mcp_docs_tidb.settings import FilterableField, TiDBSettings, ToolSettings
 from mcp_docs_tidb.tidb import Entry
 
-from tests.conftest import DeterministicEmbeddingProvider
+from tests.conftest import DeterministicEmbeddingProvider, _tools_by_name
 
 
 class _StubContext:
@@ -73,7 +73,7 @@ async def test_find_tool_query_filter_translated_to_dict_filter() -> None:
     spy = _SpyConnector()
     server.tidb_connector = spy  # type: ignore[assignment]
 
-    tools = await server.get_tools()
+    tools = await _tools_by_name(server)
     find_fn = tools["docs-tidb-find"].fn
 
     await find_fn(
@@ -99,7 +99,7 @@ async def test_find_tool_with_filterable_fields_via_wrap_filters() -> None:
     spy = _SpyConnector()
     server.tidb_connector = spy  # type: ignore[assignment]
 
-    tools = await server.get_tools()
+    tools = await _tools_by_name(server)
     find_fn = tools["docs-tidb-find"].fn
 
     await find_fn(
@@ -120,7 +120,7 @@ async def test_find_tool_value_error_returns_friendly_message(monkeypatch: pytes
     server = _make_server()
     server.tidb_connector = _ValueErrorConnector()  # type: ignore[assignment]
 
-    tools = await server.get_tools()
+    tools = await _tools_by_name(server)
     find_fn = tools["docs-tidb-find"].fn
 
     result = await find_fn(ctx=_StubContext(), query="q", collection_name="bad name")
@@ -134,7 +134,7 @@ async def test_store_tool_value_error_returns_friendly_message() -> None:
     server = _make_server()
     server.tidb_connector = _ValueErrorConnector()  # type: ignore[assignment]
 
-    tools = await server.get_tools()
+    tools = await _tools_by_name(server)
     store_fn = tools["docs-tidb-store"].fn
 
     result = await store_fn(
@@ -154,7 +154,7 @@ async def test_ingest_tool_path_not_found_returns_friendly_message(
     spy = _SpyConnector()
     server.tidb_connector = spy  # type: ignore[assignment]
 
-    tools = await server.get_tools()
+    tools = await _tools_by_name(server)
     ingest_fn = tools["docs-tidb-ingest"].fn
 
     nonexistent = str(tmp_path / "does_not_exist.md")
@@ -175,7 +175,7 @@ async def test_ingest_tool_no_files_matched_returns_message(
     spy = _SpyConnector()
     server.tidb_connector = spy  # type: ignore[assignment]
 
-    tools = await server.get_tools()
+    tools = await _tools_by_name(server)
     ingest_fn = tools["docs-tidb-ingest"].fn
 
     result = await ingest_fn(

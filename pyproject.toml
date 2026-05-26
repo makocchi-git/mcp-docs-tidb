@@ -10,7 +10,7 @@ dependencies = [
     "pytidb>=0.0.13",
     "pydantic>=2.10.6,<2.12.0",
     "pydantic-settings>=2.4.0",
-    "fastmcp==2.7.0",
+    "fastmcp==3.3.1",
 ]
 
 [build-system]
@@ -41,3 +41,4 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 python_functions = "test_*"
 asyncio_mode = "auto"
+filterwarnings = []

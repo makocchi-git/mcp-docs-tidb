@@ -15,7 +15,7 @@ from mcp_docs_tidb.mcp_server import TiDBMCPServer
 from mcp_docs_tidb.settings import FilterableField, TiDBSettings, ToolSettings
 from mcp_docs_tidb.tidb import Entry
 
-from tests.conftest import DeterministicEmbeddingProvider
+from tests.conftest import DeterministicEmbeddingProvider, _tools_by_name
 
 
 class _StubContext:
@@ -64,12 +64,12 @@ class _ListStubConnector:
 
 
 async def _registered_tool_names(server: TiDBMCPServer) -> set[str]:
-    tools = await server.get_tools()
+    tools = await _tools_by_name(server)
     return set(tools.keys())
 
 
 async def _tool_param_names(server: TiDBMCPServer, name: str) -> set[str]:
-    tools = await server.get_tools()
+    tools = await _tools_by_name(server)
     schema = tools[name].parameters
     return set(schema.get("properties", {}).keys())
 
@@ -213,7 +213,7 @@ async def test_store_tool_records_mtime_and_ingested_at() -> None:
     stub = _StubConnector()
     server.tidb_connector = stub  # type: ignore[assignment]
 
-    tools = await server.get_tools()
+    tools = await _tools_by_name(server)
     store_fn = tools["docs-tidb-store"].fn
 
     await store_fn(
@@ -243,7 +243,7 @@ async def test_store_tool_returns_friendly_error_on_db_failure() -> None:
     )
     server.tidb_connector = _ExplodingConnector()  # type: ignore[assignment]
 
-    tools = await server.get_tools()
+    tools = await _tools_by_name(server)
     store_fn = tools["docs-tidb-store"].fn
 
     result = await store_fn(
@@ -265,7 +265,7 @@ async def test_find_tool_returns_friendly_error_on_db_failure() -> None:
     )
     server.tidb_connector = _ExplodingConnector()  # type: ignore[assignment]
 
-    tools = await server.get_tools()
+    tools = await _tools_by_name(server)
     find_fn = tools["docs-tidb-find"].fn
 
     result = await find_fn(
@@ -303,7 +303,7 @@ async def test_list_tool_returns_connector_rows() -> None:
     stub = _ListStubConnector(rows)
     server.tidb_connector = stub  # type: ignore[assignment]
 
-    tools = await server.get_tools()
+    tools = await _tools_by_name(server)
     list_fn = tools["docs-tidb-list"].fn
 
     result = await list_fn(ctx=_StubContext(), collection_name="kb")
@@ -321,7 +321,7 @@ async def test_list_tool_returns_friendly_error_on_db_failure() -> None:
     )
     server.tidb_connector = _ExplodingConnector()  # type: ignore[assignment]
 
-    tools = await server.get_tools()
+    tools = await _tools_by_name(server)
     list_fn = tools["docs-tidb-list"].fn
 
     result = await list_fn(ctx=_StubContext(), collection_name="kb")
@@ -340,7 +340,7 @@ async def test_store_tool_without_mtime_still_stamps_ingested_at() -> None:
     stub = _StubConnector()
     server.tidb_connector = stub  # type: ignore[assignment]
 
-    tools = await server.get_tools()
+    tools = await _tools_by_name(server)
     store_fn = tools["docs-tidb-store"].fn
 
     await store_fn(
