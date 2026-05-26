@@ -138,6 +138,8 @@ CREATE TABLE <collection> (
 | `TIDB_DATABASE` | `test` | データベース/スキーマ名。存在しない場合は初回接続時に自動作成（`CREATE DATABASE` 権限が必要）。 |
 | `TIDB_SSL_VERIFY_CERT` | `0` | TLS を有効にするには `1` に設定（TiDB Serverless では必須）。 |
 | `TIDB_SSL_CA` | _（未設定）_ | オプションの CA バンドルパス（例：`/etc/ssl/cert.pem`）。 |
+| `TIDB_CONNECT_TIMEOUT` | `10` | TCP 接続のタイムアウト（秒）。遅いリモートインスタンスでは増加させてください。 |
+| `TIDB_READ_TIMEOUT` | `30` | クエリ応答のタイムアウト（秒）。 |
 
 ### 動作設定
 
@@ -154,6 +156,13 @@ CREATE TABLE <collection> (
 | `TOOL_INGEST_DESCRIPTION` | _（ソース参照）_ | `docs-tidb-ingest` の LLM 向け説明文を上書き。 |
 | `TOOL_LIST_DESCRIPTION` | _（ソース参照）_ | `docs-tidb-list` の LLM 向け説明文を上書き。 |
 | `TIDB_ALLOW_ARBITRARY_FILTER` | `0` | `1` の場合、`docs-tidb-find` に JSON フィルタースペックを受け付ける `query_filter` 引数を公開します。 |
+
+### セキュリティ設定
+
+| 変数 | デフォルト | 説明 |
+| --- | --- | --- |
+| `TIDB_INGEST_ROOT` | _（未設定）_ | 設定した場合、`docs-tidb-ingest` はこのディレクトリの配下に解決されないパスを拒否します。信頼されていない MCP クライアントがアクセスできる場合のパストラバーサル攻撃を防ぎます。 |
+| `TIDB_INGEST_MAX_PATHS` | `1000` | 1 回の `docs-tidb-ingest` 呼び出しで受け付けるパスエントリの最大数。意図しない大量バッチを防ぎます。 |
 
 ## クイックスタート
 

@@ -30,18 +30,35 @@ class FastEmbedProvider(EmbeddingProvider):
 
     @staticmethod
     def _resolve_dim(model_name: str) -> int:
-        for m in TextEmbedding.list_supported_models():
-            if m["model"] == model_name:
-                return int(m["dim"])
+        try:
+            for m in TextEmbedding.list_supported_models():
+                if m["model"] == model_name:
+                    return int(m["dim"])
+        except Exception as exc:
+            raise ValueError(
+                f"Unknown FastEmbed model {model_name!r}; "
+                "check the model name or upgrade fastembed."
+            ) from exc
         # Unknown / custom model: must instantiate to obtain the dimension.
-        te = TextEmbedding(model_name)
-        desc = te._get_model_description(model_name)
-        return int(desc.dim)
+        try:
+            te = TextEmbedding(model_name)
+            desc = te._get_model_description(model_name)
+            return int(desc.dim or 0)
+        except Exception as exc:
+            raise ValueError(
+                f"Unknown FastEmbed model {model_name!r}; "
+                "check the model name or upgrade fastembed."
+            ) from exc
 
     def _model(self) -> TextEmbedding:
         """Return the TextEmbedding instance, downloading the model on first call."""
         if self._embedding_model is None:
-            self._embedding_model = TextEmbedding(self.model_name)
+            try:
+                self._embedding_model = TextEmbedding(self.model_name)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Failed to load FastEmbed model {self.model_name!r}: {exc}"
+                ) from exc
         return self._embedding_model
 
     def get_source_embedding(

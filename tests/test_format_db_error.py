@@ -48,3 +48,24 @@ def test_format_db_error_mentions_hint_env_vars() -> None:
     assert "Hint:" in msg
     for var in ("TIDB_HOST", "TIDB_PORT", "TIDB_USER", "TIDB_PASSWORD", "TIDB_DATABASE"):
         assert var in msg
+
+
+def test_format_db_error_does_not_leak_password() -> None:
+    msg = format_db_error(RuntimeError("auth failure"), _settings())
+    assert "secret" not in msg
+
+
+def test_format_db_error_orig_falsy_falls_back_to_exc() -> None:
+    # SQLAlchemy sometimes wraps with .orig=None; must not emit "None" as the message.
+    from sqlalchemy.exc import OperationalError
+
+    wrapped = OperationalError("stmt", {}, None)
+    msg = format_db_error(wrapped, _settings())
+    # Should not contain raw "None" from orig; should still have the outer exc str.
+    assert "Hint:" in msg
+
+
+def test_format_db_error_handles_filenotfounderror() -> None:
+    msg = format_db_error(FileNotFoundError("no such file"), _settings())
+    assert "db.example.com" in msg
+    assert "Hint:" in msg

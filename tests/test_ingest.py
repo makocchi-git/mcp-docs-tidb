@@ -711,3 +711,64 @@ def test_only_modified_processes_when_mtime_advances(
     rows = client.query(f"SELECT content FROM `{collection_name}`").to_list()
     contents = {r["content"] for r in rows}
     assert contents == {"payload two"}
+
+
+# ---------------------------------------------------------------------------
+# Additional chunk_text edge-case tests
+# ---------------------------------------------------------------------------
+
+
+def test_chunk_text_overlap_max_chars_minus_one_is_valid() -> None:
+    # overlap = max_chars - 1 is the tightest valid overlap
+    chunks = chunk_text("abcdef", max_chars=4, overlap=3)
+    assert len(chunks) >= 1
+
+
+def test_chunk_text_overlap_equal_to_max_chars_raises() -> None:
+    with pytest.raises(ValueError):
+        chunk_text("xyz", max_chars=5, overlap=5)
+
+
+def test_chunk_text_negative_overlap_raises() -> None:
+    with pytest.raises(ValueError):
+        chunk_text("text", max_chars=100, overlap=-1)
+
+
+def test_chunk_text_large_input_does_not_oom() -> None:
+    text = "a" * 200_000
+    chunks = chunk_text(text, max_chars=2000, overlap=200)
+    assert len(chunks) >= 100
+    total_coverage = sum(len(c) for c in chunks)
+    assert total_coverage >= len(text)
+
+
+def test_chunk_text_exact_fit_produces_single_chunk() -> None:
+    text = "x" * 2000
+    chunks = chunk_text(text, max_chars=2000, overlap=0)
+    assert len(chunks) == 1
+    assert chunks[0] == text
+
+
+# ---------------------------------------------------------------------------
+# Additional _parse_extra_metadata_args edge-case tests
+# ---------------------------------------------------------------------------
+
+
+def test_parse_extra_metadata_empty_key_stored_as_empty_string() -> None:
+    result = _parse_extra_metadata_args(["=value"])
+    assert result == {"": "value"}
+
+
+def test_parse_extra_metadata_json_array_decoded() -> None:
+    result = _parse_extra_metadata_args(['tags=["a","b"]'])
+    assert result == {"tags": ["a", "b"]}
+
+
+def test_parse_extra_metadata_json_object_decoded() -> None:
+    result = _parse_extra_metadata_args(['meta={"k":1}'])
+    assert result == {"meta": {"k": 1}}
+
+
+def test_parse_extra_metadata_empty_value_stored_as_empty_string() -> None:
+    result = _parse_extra_metadata_args(["key="])
+    assert result == {"key": ""}

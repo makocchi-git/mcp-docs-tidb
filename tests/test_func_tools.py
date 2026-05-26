@@ -38,3 +38,35 @@ def test_unknown_fixed_key_is_passed_through() -> None:
 
     wrapped = make_partial_function(f, {"extra": 5})
     assert wrapped(a=1) == {"a": 1, "extra": 5}
+
+
+def test_no_params_function_works() -> None:
+    def f() -> str:
+        return "hello"
+
+    wrapped = make_partial_function(f, {})
+    assert inspect.signature(wrapped).parameters == {}
+    assert wrapped() == "hello"
+
+
+def test_function_name_and_doc_preserved() -> None:
+    def my_func(x: int) -> int:
+        """My docstring."""
+        return x
+
+    wrapped = make_partial_function(my_func, {})
+    assert wrapped.__name__ == "my_func"
+    assert wrapped.__doc__ == "My docstring."
+
+
+def test_async_function_is_wrapped_correctly() -> None:
+    import asyncio
+
+    async def af(a: int, b: int) -> int:
+        return a + b
+
+    wrapped = make_partial_function(af, {"b": 10})
+    sig = inspect.signature(wrapped)
+    assert "b" not in sig.parameters
+    result = asyncio.get_event_loop().run_until_complete(wrapped(a=5))
+    assert result == 15

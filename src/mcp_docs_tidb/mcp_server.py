@@ -121,8 +121,14 @@ class TiDBMCPServer(FastMCP):
             entry = Entry(content=information, metadata=merged_metadata)
             try:
                 self.tidb_connector.store(entry, collection_name=collection_name)
+            except ValueError as exc:
+                logger.warning("docs-tidb-store rejected invalid input: %s", exc)
+                return f"Error: {exc}"
             except (SQLAlchemyError, OSError) as exc:
-                logger.exception("docs-tidb-store failed")
+                logger.exception("docs-tidb-store failed (DB)")
+                return format_db_error(exc, self.tidb_settings)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("docs-tidb-store failed (unexpected)")
                 return format_db_error(exc, self.tidb_settings)
             return f"Remembered: {information} in collection {collection_name}"
 
@@ -135,24 +141,29 @@ class TiDBMCPServer(FastMCP):
             query_filter: ArbitraryFilter | None = None,
             dict_filter: PyTiDBFilter | None = None,
         ) -> list[str] | None:
-            # When a wrap_filters wrapper is in front of this function, it
-            # supplies dict_filter directly. Otherwise we may receive the
-            # JSON-shaped `query_filter` and translate it here.
-            if dict_filter is None and query_filter is not None:
-                dict_filter = build_filter_from_arbitrary(query_filter)
-
             await ctx.debug(
                 f"Searching TiDB table {collection_name} with filter={dict_filter!r}"
             )
             try:
+                # When a wrap_filters wrapper is in front of this function, it
+                # supplies dict_filter directly. Otherwise we may receive the
+                # JSON-shaped `query_filter` and translate it here.
+                if dict_filter is None and query_filter is not None:
+                    dict_filter = build_filter_from_arbitrary(query_filter)
                 entries = self.tidb_connector.search(
                     query,
                     collection_name=collection_name,
                     limit=self.tidb_settings.search_limit,
                     dict_filter=dict_filter,
                 )
+            except ValueError as exc:
+                logger.warning("docs-tidb-find rejected invalid input: %s", exc)
+                return [f"Error: {exc}"]
             except (SQLAlchemyError, OSError) as exc:
-                logger.exception("docs-tidb-find failed")
+                logger.exception("docs-tidb-find failed (DB)")
+                return [format_db_error(exc, self.tidb_settings)]
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("docs-tidb-find failed (unexpected)")
                 return [format_db_error(exc, self.tidb_settings)]
             if not entries:
                 return None
@@ -231,16 +242,24 @@ class TiDBMCPServer(FastMCP):
                 f"only_modified={only_modified}, "
                 f"truncate_collection={truncate_collection})"
             )
-            try:
-                files = collect_paths(
-                    [Path(p) for p in paths], recursive=recursive, glob=glob
+            tool_settings = self.tool_settings
+            if len(paths) > tool_settings.ingest_max_paths:
+                return (
+                    f"Error: too many paths ({len(paths)}); "
+                    f"limit is {tool_settings.ingest_max_paths}."
                 )
-            except FileNotFoundError as exc:
-                return f"Error: path not found: {exc}"
-            if not files:
-                return "No files matched."
-
             try:
+                resolved_paths = [Path(p) for p in paths]
+                if tool_settings.ingest_root:
+                    root = Path(tool_settings.ingest_root).resolve()
+                    for p in resolved_paths:
+                        try:
+                            p.resolve().relative_to(root)
+                        except ValueError:
+                            return f"Error: path {p!r} is outside the allowed root {str(root)!r}."
+                files = collect_paths(resolved_paths, recursive=recursive, glob=glob)
+                if not files:
+                    return "No files matched."
                 written = ingest_paths(
                     files,
                     collection_name=collection_name,
@@ -251,8 +270,14 @@ class TiDBMCPServer(FastMCP):
                     only_modified=only_modified,
                     truncate_collection=truncate_collection,
                 )
+            except (FileNotFoundError, ValueError) as exc:
+                logger.warning("docs-tidb-ingest rejected invalid input: %s", exc)
+                return f"Error: {exc}"
             except (SQLAlchemyError, OSError) as exc:
-                logger.exception("docs-tidb-ingest failed")
+                logger.exception("docs-tidb-ingest failed (DB)")
+                return format_db_error(exc, self.tidb_settings)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("docs-tidb-ingest failed (unexpected)")
                 return format_db_error(exc, self.tidb_settings)
             return (
                 f"Ingested {written} chunk(s) from {len(files)} file(s) "
@@ -271,8 +296,14 @@ class TiDBMCPServer(FastMCP):
                 return self.tidb_connector.list_sources(
                     collection_name=collection_name
                 )
+            except ValueError as exc:
+                logger.warning("docs-tidb-list rejected invalid input: %s", exc)
+                return f"Error: {exc}"
             except (SQLAlchemyError, OSError) as exc:
-                logger.exception("docs-tidb-list failed")
+                logger.exception("docs-tidb-list failed (DB)")
+                return format_db_error(exc, self.tidb_settings)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("docs-tidb-list failed (unexpected)")
                 return format_db_error(exc, self.tidb_settings)
 
         find_foo = find

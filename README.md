@@ -138,6 +138,8 @@ Returns a list of objects, one per distinct `metadata.source` value:
 | `TIDB_DATABASE` | `test` | Database/schema name. Created automatically on first connect if it does not exist (requires `CREATE DATABASE` privilege). |
 | `TIDB_SSL_VERIFY_CERT` | `0` | Set to `1` to enable TLS (required for TiDB Serverless). |
 | `TIDB_SSL_CA` | _(unset)_ | Optional CA bundle path, e.g. `/etc/ssl/cert.pem`. |
+| `TIDB_CONNECT_TIMEOUT` | `10` | Seconds to wait for a TCP connection to TiDB. Increase for slow or remote instances. |
+| `TIDB_READ_TIMEOUT` | `30` | Seconds to wait for a query response. |
 
 ### Behavior
 
@@ -154,6 +156,13 @@ Returns a list of objects, one per distinct `metadata.source` value:
 | `TOOL_INGEST_DESCRIPTION` | _(see source)_ | Override the description shown to the LLM for `docs-tidb-ingest`. |
 | `TOOL_LIST_DESCRIPTION` | _(see source)_ | Override the description shown to the LLM for `docs-tidb-list`. |
 | `TIDB_ALLOW_ARBITRARY_FILTER` | `0` | When `1`, exposes a `query_filter` argument on `docs-tidb-find` that accepts a JSON filter spec. |
+
+### Security
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `TIDB_INGEST_ROOT` | _(unset)_ | When set, `docs-tidb-ingest` rejects any path that does not resolve to a descendant of this directory. Prevents path-traversal attacks when the server is reachable by untrusted MCP clients. |
+| `TIDB_INGEST_MAX_PATHS` | `1000` | Maximum number of path entries accepted in a single `docs-tidb-ingest` call. Protects against accidental or malicious large batches. |
 
 ## Quick start
 
