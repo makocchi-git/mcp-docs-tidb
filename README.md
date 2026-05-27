@@ -181,6 +181,8 @@ The default endpoint is `127.0.0.1:4000`, user `root`, no password — which mat
 
 > Vector search requires TiDB v8.4 or newer. Older versions will fail at `CREATE TABLE` because the `VECTOR` type is unknown.
 
+> Normally the data in playground is ephemeral and lost when the process exits. To persist it, specify a tag when starting playground. More details in the [Specify a tag when starting the TiDB cluster to store the data](https://docs.pingcap.com/tidb/stable/tiup-playground/#specify-a-tag-when-starting-the-tidb-cluster-to-store-the-data)
+
 ### 2. Run the MCP server
 
 ```bash
@@ -557,6 +559,8 @@ This mode does not require declaring fields up-front (and does not create indexe
 
 ## Connecting to TiDB Cloud Starter
 
+If you are using [TiDB Cloud Starter](https://www.pingcap.com/tidb-cloud-starter/), the connection parameters are available in the TiDB Cloud Console.
+
 TiDB Cloud Starter requires TLS. Point `TIDB_SSL_CA` at your system CA bundle:
 
 ```bash
@@ -570,6 +574,8 @@ TIDB_SSL_CA=/etc/ssl/cert.pem \
 COLLECTION_NAME=kb \
 uvx --from git+https://github.com/makocchi-git/mcp-docs-tidb mcp-docs-tidb
 ```
+
+💡 [TiDB Cloud Zero](https://zero.tidbcloud.com/) is also ready to use as well as TiDB Cloud Starter.
 
 ## Development
 

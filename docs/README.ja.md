@@ -181,6 +181,8 @@ tiup playground v8.5
 
 > ベクター検索には TiDB v8.4 以降が必要です。古いバージョンでは `VECTOR` 型が不明なため、`CREATE TABLE` に失敗します。
 
+> 通常、playground のデータはプロセス終了時に消えます。データを永続化するには、playground 起動時にタグを指定してください。詳細は [Specify a tag when starting the TiDB cluster to store the data](https://docs.pingcap.com/tidb/stable/tiup-playground/#specify-a-tag-when-starting-the-tidb-cluster-to-store-the-data) を参照してください。
+
 ### 2. MCP サーバーを起動する
 
 ```bash
@@ -556,6 +558,8 @@ if __name__ == "__main__":
 
 ## TiDB Cloud Starter への接続
 
+[TiDB Cloud Starter](https://www.pingcap.com/tidb-cloud-starter/) を使用している場合、接続パラメーターは TiDB Cloud Console から確認できます。
+
 TiDB Cloud Starter は TLS を必要とします。`TIDB_SSL_CA` をシステムの CA バンドルに向けてください：
 
 ```bash
@@ -569,6 +573,8 @@ TIDB_SSL_CA=/etc/ssl/cert.pem \
 COLLECTION_NAME=kb \
 uvx --from git+https://github.com/makocchi-git/mcp-docs-tidb mcp-docs-tidb
 ```
+
+💡 [TiDB Cloud Zero](https://zero.tidbcloud.com/) も TiDB Cloud Starter と同様にすぐに利用できます。
 
 ## 開発
 
