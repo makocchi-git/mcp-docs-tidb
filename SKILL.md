@@ -42,14 +42,16 @@ Never use `docs-tidb-store` in a loop to populate a corpus — it is for single 
      uv run mcp-docs-tidb-ingest \
        --collection <name> --recursive --glob '*.md' <paths...>
    ```
-   Re-running the same command is safe — chunks are replaced per source file by default. Pass `--no-replace` only if the user explicitly wants append-only history. For periodic refreshes of a large corpus where only a few files change, add `--only-modified` (or the `only_modified=True` argument on the MCP tool) so unchanged files are skipped based on their on-disk mtime vs. the `metadata.mtime` already in TiDB.
+   Re-running the same command is safe — chunks are replaced per source file by default. Pass `--no-replace` (CLI) or `replace=False` (MCP tool) only if the user explicitly wants append-only history. For periodic refreshes of a large corpus where only a few files change, add `--only-modified` (CLI) or `only_modified=True` (MCP tool) so unchanged files are skipped based on their on-disk mtime vs. the `metadata.mtime` already in TiDB.
 
-   Use `--extra-metadata KEY=VALUE` (repeatable) to tag every ingested chunk with additional metadata fields — for example `--extra-metadata category=ops`. Values that are valid JSON (numbers, booleans) are decoded automatically. These fields are searchable via filterable fields or the arbitrary-filter mechanism. The four standard fields (`source`, `chunk`, `mtime`, `ingested_at`) always take precedence if there is a key conflict. Use `--exclude-glob PATTERN` (repeatable) to skip files matching a glob pattern against the filename or full path.
+   **CLI-only options** (not available in the MCP tool):
+   - `--extra-metadata KEY=VALUE` (repeatable) — tags every ingested chunk with additional metadata fields (e.g. `--extra-metadata category=ops`). Values that are valid JSON (numbers, booleans) are decoded automatically. The four standard fields (`source`, `chunk`, `mtime`, `ingested_at`) always take precedence if there is a key conflict.
+   - `--exclude-glob PATTERN` (repeatable) — skips files matching a glob pattern against the filename or full path.
 4. **Report counts.** The tool/CLI returns "Ingested N chunk(s) from M file(s)". Surface that to the user verbatim — it's the only direct signal that re-ingest actually replaced rows.
-5. **Vector index decision.** Two paths, requires TiFlash in either case:
-   - Set `TIDB_USE_VECTOR_INDEX=1` *before* the first ingest so the auto-created table includes `VECTOR INDEX ... USING HNSW` inline. Cleanest, but no-op against existing tables.
-   - Run `ALTER TABLE <collection> ADD VECTOR INDEX idx_embedding ((VEC_COSINE_DISTANCE(embedding))) USING HNSW` after the first sizeable load. Use this when the table already exists.
-   Without an index, searches are sequential scans — fine up to ~10⁴ rows, painful beyond. If the cluster has no TiFlash node, skip this step; index creation will fail.
+5. **Vector index decision.** `TIDB_USE_VECTOR_INDEX` **defaults to `1` (enabled)**. Both paths require TiFlash:
+   - **New table (default):** The auto-created table already includes `VECTOR INDEX ... USING HNSW` inline — no extra step needed.
+   - **Existing table:** Run `ALTER TABLE <collection> ADD VECTOR INDEX idx_embedding ((VEC_COSINE_DISTANCE(embedding))) USING HNSW` after the first sizeable load.
+   Without an index, searches are sequential scans — fine up to ~10⁴ rows, painful beyond. **If the cluster has no TiFlash node, set `TIDB_USE_VECTOR_INDEX=0` before the first ingest** — otherwise table creation will fail.
 
 ## Workflow: inspecting registered documents
 
@@ -99,6 +101,8 @@ If the user is mixing both, push back — pick one.
 | `Access denied` | OS user leaked into `TIDB_USER` default | Set `TIDB_USER=root` (or the actual user) explicitly. |
 | Find returns nothing in a non-empty table | Search hit a different collection, or `TIDB_READ_ONLY=1` (no `docs-tidb-store`/`docs-tidb-ingest` registered — but `docs-tidb-find` still works against existing data) | Confirm collection name; `SELECT COUNT(*) FROM <collection>`. |
 | MCP tool says "path not found" | `paths` are resolved on the *server* host, not the client | Use the CLI on the server host, or share the filesystem (stdio transport already does). |
+| MCP ingest returns `Error: path … is outside the allowed root` | `TIDB_INGEST_ROOT` is set and the supplied path is not under it | Either supply a path under the allowed root, or unset `TIDB_INGEST_ROOT`. |
+| MCP ingest returns `Error: too many paths (N); limit is M` | `TIDB_INGEST_MAX_PATHS` cap exceeded (default 1000) | Raise the limit with `TIDB_INGEST_MAX_PATHS=<n>` or split the ingest into batches. |
 
 ## Tone of responses
 
